@@ -40,4 +40,9 @@ next-env.d.ts
 #python
 /.venv
 __pycache__/
+
+
+#db
 *.sqlite3
+images/
+
