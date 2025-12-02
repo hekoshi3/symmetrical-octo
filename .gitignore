@@ -45,4 +45,5 @@ __pycache__/
 #db
 *.sqlite3
 images/
-
+media/
+static/
