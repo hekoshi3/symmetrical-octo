@@ -39,7 +39,8 @@ INSTALLED_APPS = [
     'django.contrib.staticfiles',
     'api',
     'corsheaders',
-    'rest_framework'
+    'rest_framework',
+    'django_filters',
 ]
 
 MIDDLEWARE = [
@@ -78,11 +79,14 @@ WSGI_APPLICATION = 'aihub.wsgi.application'
 
 DATABASES = {
     'default': {
-        'ENGINE': 'django.db.backends.sqlite3',
-        'NAME': BASE_DIR / 'db.sqlite3',
+        'ENGINE': 'django.db.backends.postgresql',
+        'NAME': 'aihub_db',           # Имя базы (из docker -e POSTGRES_DB)
+        'USER': 'postgres',           # Стандартный юзер
+        'PASSWORD': 'mysecretpassword', # Пароль (из docker -e POSTGRES_PASSWORD)
+        'HOST': 'localhost',          # Хост (т.к. порт 5432 проброшен в докере)
+        'PORT': '5432',
     }
 }
-
 
 # Password validation
 # https://docs.djangoproject.com/en/5.2/ref/settings/#auth-password-validators

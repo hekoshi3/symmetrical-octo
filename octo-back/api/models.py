@@ -1,36 +1,20 @@
 from django.db import models
 from django.contrib.auth.models import User
 from django.core.exceptions import ValidationError
+from django.core.validators import FileExtensionValidator
 
-# Create your models here.
-
-class CustomUser(models.Model):
-    user = models.OneToOneField(User, on_delete=models.CASCADE)
+# --- ПРОФИЛЬ ---
+class UserProfile(models.Model):
+    # Используем OneToOne, как ты и хотел
+    user = models.OneToOneField(User, on_delete=models.CASCADE, related_name="profile")
     bio = models.TextField(max_length=500, blank=True)
-    avatar = models.ImageField(upload_to="users/avatars/", blank=True, null=True, max_length=500) #TODO: Обработка NULL
+    avatar = models.ImageField(upload_to="users/avatars/", blank=True, null=True)
 
     def __str__(self):
         return self.user.username
 
-class Post(models.Model):
-    author = models.ForeignKey(CustomUser, on_delete=models.CASCADE)
-    title = models.CharField(max_length=100)
-    description = models.TextField(blank=True)
-    created_at = models.DateTimeField(auto_now_add=True)
-    image = models.ForeignKey('GeneratedImage', null=True, on_delete=models.CASCADE)
-    aimodel = models.ForeignKey('AiModel', null=True, on_delete=models.CASCADE)
-
-    def __str__(self):
-        return self.title
-    
-    def clean(self):
-        if not self.image and not self.aimodel:
-            raise ValidationError("Пост должен ссылаться на изображение или модель.")
-        if self.image and self.aimodel:
-            raise ValidationError("Пост должен ссылаться только на один объект.")
-
+# --- МОДЕЛЬ (LoRA, Checkpoint) ---
 class AiModel(models.Model):
-    name = models.CharField(max_length=50)
     AI_MODEL_TYPES = [
         ("LORA", "LoRA"),
         ("CHECKPOINT", "Checkpoint"),
@@ -38,28 +22,104 @@ class AiModel(models.Model):
         ("UPSCALER", "Upscaler"),
         ("CONTROLNET", "ControlNet"),
     ]
+
+    author = models.ForeignKey(User, on_delete=models.CASCADE, related_name="models")
+    name = models.CharField(max_length=100)
     model_type = models.CharField(max_length=50, choices=AI_MODEL_TYPES)
-    file = models.FileField(upload_to="models/", max_length=500)
-    preview_image = models.ForeignKey('Post', blank=True, related_name='model_featured', null=True, on_delete=models.SET_NULL)
     description = models.TextField(blank=True)
+    
+    # Файл модели + валидация (ТЗ 5.2)
+    file = models.FileField(
+        upload_to="models/", 
+        max_length=500,
+        validators=[FileExtensionValidator(allowed_extensions=['safetensors', 'ckpt', 'pt'])]
+    )
+    
+    # Обложка модели
+    cover_image = models.ImageField(upload_to="models/covers/", blank=True, null=True)
+
+    # Статистика
+    downloads_count = models.IntegerField(default=0)
+    # Лайки храним в лайках, но дублируем счетчиком для быстрой сортировки
+    likes_count = models.IntegerField(default=0)
+    
+    created_at = models.DateTimeField(auto_now_add=True)
 
     def __str__(self):
         return self.name
 
-
-
+# --- ГЕНЕРАЦИЯ (КАРТИНКА) ---
 class GeneratedImage(models.Model):
+    author = models.ForeignKey(User, on_delete=models.CASCADE, related_name="images")
     image = models.ImageField(upload_to="images/", max_length=500)
-    checkpoint = models.ForeignKey(AiModel, on_delete=models.SET_NULL, limit_choices_to={'model_type': 'CHECKPOINT'}, related_name='model', null=True, blank=True)
-    resources = models.ManyToManyField(AiModel, related_name='additional_models', limit_choices_to={'model_type__in': ['LORA', 'EMBEDDING', 'UPSCALER', 'CONTROLNET']}, blank=True)
-    generation_params = models.JSONField(default=dict)
-    #prompt = models.TextField(blank=True)
-    #negative_prompt = models.TextField(blank=True)
-    #seed = models.BigIntegerField(null=True)
-    #steps = models.IntegerField(null=True)
-    #cfg_scale = models.FloatField(null=True)
-    #sampler = models.CharField(max_length=50, blank=True)
+    
+    # Ссылка на модель (если это пример работы конкретной модели)
+    linked_model = models.ForeignKey(
+        AiModel, 
+        on_delete=models.SET_NULL, 
+        null=True, 
+        blank=True,
+        related_name='images'
+    )
+    
+    # Ресурсы (LoRA и прочее, что использовалось) - М2М, как ты и хотел
+    resources = models.ManyToManyField(
+        AiModel, 
+        related_name='used_in_images', 
+        blank=True
+    )
+    
+    # Параметры генерации храним в JSON (Prompt, Seed, Sampler...)
+    generation_params = models.JSONField(default=dict, blank=True)
+    
+    likes_count = models.IntegerField(default=0)
+    created_at = models.DateTimeField(auto_now_add=True)
 
     def __str__(self):
-        return f"Image #{self.id}"
+        return f"Image {self.id} by {self.author.username}"
 
+# --- КОММЕНТАРИИ (Одна таблица) ---
+class Comment(models.Model):
+    user = models.ForeignKey(User, on_delete=models.CASCADE)
+    text = models.TextField()
+    created_at = models.DateTimeField(auto_now_add=True)
+    
+    # Ссылки (заполняется только одна)
+    image = models.ForeignKey(GeneratedImage, on_delete=models.CASCADE, null=True, blank=True, related_name='comments')
+    aimodel = models.ForeignKey(AiModel, on_delete=models.CASCADE, null=True, blank=True, related_name='comments')
+
+    def clean(self):
+        # Проверка, что коммент не висит в воздухе и не привязан к двум сразу
+        if not self.image and not self.aimodel:
+            raise ValidationError("Комментарий должен быть привязан к объекту.")
+        if self.image and self.aimodel:
+            raise ValidationError("Нельзя комментировать два объекта сразу.")
+
+    def save(self, *args, **kwargs):
+        self.full_clean() # Вызываем валидацию перед сохранением
+        super().save(*args, **kwargs)
+
+# --- ЛАЙКИ (Одна таблица) ---
+class Like(models.Model):
+    user = models.ForeignKey(User, on_delete=models.CASCADE)
+    created_at = models.DateTimeField(auto_now_add=True)
+    
+    image = models.ForeignKey(GeneratedImage, on_delete=models.CASCADE, null=True, blank=True, related_name='likes')
+    aimodel = models.ForeignKey(AiModel, on_delete=models.CASCADE, null=True, blank=True, related_name='likes')
+
+    class Meta:
+        # Уникальность: Юзер не может лайкнуть одну и ту же картинку дважды
+        unique_together = [
+            ['user', 'image'],
+            ['user', 'aimodel']
+        ]
+    
+    def clean(self):
+        if not self.image and not self.aimodel:
+            raise ValidationError("Лайк должен быть привязан к объекту.")
+        if self.image and self.aimodel:
+            raise ValidationError("Нельзя лайкнуть два объекта сразу.")
+            
+    def save(self, *args, **kwargs):
+        self.full_clean()
+        super().save(*args, **kwargs)
