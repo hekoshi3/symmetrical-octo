@@ -1,8 +1,9 @@
 "use client"
 
 import Image from "next/image";
-import React, { useEffect, useState } from "react";
+import { useEffect, useState } from "react";
 import { GalleryImage } from "../components/interfaces/GalleryImage";
+import Link from "next/link";
 
 export default function GeneratePage() {
     const [gallery, setGallery] = useState<GalleryImage[]>([]);
@@ -10,7 +11,7 @@ export default function GeneratePage() {
     useEffect(() => {
         const fetchGallery = async () => {
             try {
-                const res = await fetch("/api/scan");
+                const res = await fetch("/api/getImages");
                 if (!res.ok) throw new Error("Failed to fetch images");
                 const images: GalleryImage[] = await res.json();
                 setGallery(images.reverse());
@@ -25,7 +26,7 @@ export default function GeneratePage() {
     return (
         <div className="gallery-list gallery">
             {gallery.map((img, index) => (
-                <a key={index} href={img.path} target="_blank" rel="noopener noreferrer">
+                <Link key={index} href={img.path} target="_blank" rel="noopener noreferrer">
                     <div className="gallery-image-wrapper">
                         <Image
                             src={img.path}
@@ -35,7 +36,7 @@ export default function GeneratePage() {
                             unoptimized
                         />
                     </div>
-                </a>
+                </Link>
             ))}
         </div>
     );

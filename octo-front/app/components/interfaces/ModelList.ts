@@ -3,5 +3,6 @@ export interface ModelList {
     previewWidth: number;
     previewHeight: number;
     arch: string;
+    hash: string;
     id: number;
 };

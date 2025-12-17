@@ -5,24 +5,38 @@ import sharp from "sharp";
 import fs from "fs";
 import { log } from "console";
 
-const MODEL_EXTENSIONS = [".jpg", ".jpeg", ".png", ".webp"];
+const IMAGE_EXTENSIONS = [".jpg", ".jpeg", ".png", ".webp"];
 
-async function getModels(dir: string): Promise<
+let parsedInfo = "";
+let steps = "";
+let sampler = "";
+let sheduler = "";
+let cfg = "";
+let seed = 0;
+let modelhash = "";
+let modelname = "";
+let splittedPInfo;
+
+async function getImagesInDirectory(dir: string): Promise<
   {
-    preview: string;
-    previewWidth: number;
-    previewHeight: number;
-    arch: string;
-    id: number;
+    path: string;
+    width: number;
+    height: number;
+    sampler: string;
+    sheduler: string;
+    modelname: string;
+    seed: number;
   }[]
 > {
   const fullDir = path.join(process.cwd(), "public", dir);
   let result: {
-    preview: string;
-    previewWidth: number;
-    previewHeight: number;
-    arch: string;
-    id: number;
+    path: string;
+    width: number;
+    height: number;
+    sampler: string;
+    sheduler: string;
+    modelname: string;
+    seed: number;
   }[] = [];
 
   if (!fs.existsSync(path.join(process.cwd(), "public"))) {
@@ -44,25 +58,16 @@ async function getModels(dir: string): Promise<
   }
 
   try {
-    let parsedInfo = "";
-    let steps = "";
-    let sampler = "";
-    let sheduler = "";
-    let cfg = "";
-    let seed = "";
-    let modelhash = "";
-    let modelname = "";
-
     const entries = await fsp.readdir(fullDir, { withFileTypes: true });
 
     for (const entry of entries) {
       const entryPath = path.join(dir, entry.name);
 
       if (entry.isDirectory()) {
-        const nested = await getModels(entryPath);
+        const nested = await getImagesInDirectory(entryPath);
         result = result.concat(nested);
       } else if (
-        MODEL_EXTENSIONS.includes(path.extname(entry.name).toLowerCase())
+        IMAGE_EXTENSIONS.includes(path.extname(entry.name).toLowerCase())
       ) {
         const fullPath = path.join(process.cwd(), "public", entryPath);
         const metadata = await sharp(fullPath).metadata();
@@ -71,7 +76,7 @@ async function getModels(dir: string): Promise<
           info.forEach((element) => {
             if (element.startsWith("Steps:")) parsedInfo = element;
           });
-          const splittedPInfo = parsedInfo.split(", ");
+          splittedPInfo = parsedInfo.split(", ");
           splittedPInfo.forEach((element) => {
             if (element.startsWith("Steps:")) steps = element.split(": ")[1];
             if (element.startsWith("Sampler:"))
@@ -79,20 +84,32 @@ async function getModels(dir: string): Promise<
             if (element.startsWith("Schedule type: "))
               sheduler = element.split(": ")[1];
             if (element.startsWith("CFG scale: ")) cfg = element.split(": ")[1];
-            if (element.startsWith("Seed: ")) seed = element.split(": ")[1];
+            if (element.startsWith("Seed: "))
+              seed = Number(element.split(": ")[1]);
             if (element.startsWith("Model hash: "))
               modelhash = element.split(": ")[1];
             if (element.startsWith("Model: "))
               modelname = element.split(": ")[1];
           });
+          /*console.log(
+            steps,
+            sampler,
+            sheduler,
+            cfg,
+            seed,
+            modelhash,
+            modelname
+          );*/
         }
         if (metadata.width && metadata.height) {
           result.push({
-            preview: "/" + entryPath.replace(/\\/g, "/"),
-            previewWidth: metadata.width,
-            previewHeight: metadata.height,
-            arch: modelname,
-            id: 0,
+            path: "/" + entryPath.replace(/\\/g, "/"),
+            width: metadata.width,
+            height: metadata.height,
+            sampler: sampler,
+            sheduler: sheduler,
+            modelname: modelname,
+            seed: seed,
           });
         }
       }
@@ -105,6 +122,6 @@ async function getModels(dir: string): Promise<
 }
 
 export async function GET() {
-  const models = await getModels("models");
-  return NextResponse.json(models);
+  const images = await getImagesInDirectory("generated");
+  return NextResponse.json(images);
 }
