@@ -91,15 +91,6 @@ async function getImagesInDirectory(dir: string): Promise<
             if (element.startsWith("Model: "))
               modelname = element.split(": ")[1];
           });
-          /*console.log(
-            steps,
-            sampler,
-            sheduler,
-            cfg,
-            seed,
-            modelhash,
-            modelname
-          );*/
         }
         if (metadata.width && metadata.height) {
           result.push({

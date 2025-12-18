@@ -1,7 +1,19 @@
+"use client";
+
 import Image from "next/image";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
+import { useAuth } from "../provider/authProvider";
 
 export default function Navbar() {
+  const { token, logout, isLoading } = useAuth();
+  const router = useRouter();
+
+  const handleLogout = () => {
+    logout();
+    router.push("/");
+  };
+
   return (
     <header className="sticky top-0 left-0 z-50 w-full bg-neutral-800 text-white md:px-8 border-b border-neutral-700">
       <div className="w-full flex justify-between items-center md:px-8 py-1 sm:px-2">
@@ -27,16 +39,36 @@ export default function Navbar() {
         </section>
 
         {/* Right Section */}
-        <section className="flex space-x-6">
+        <section className="flex space-x-6 items-center">
           <Link href="/" className="hover:underline">
             Generate
           </Link>
-          <Link href="/upload" className="hover:underline">
-            Upload
-          </Link>
-          <Link href="/user" className="hover:underline">
-            User
-          </Link>
+          {token && (
+            <>
+              <Link href="/upload" className="hover:underline">
+                Upload
+              </Link>
+              <Link href="/user" className="hover:underline">
+                User
+              </Link>
+            </>
+          )}
+          {!isLoading && (
+            <>
+              {token ? (
+                <button
+                  onClick={handleLogout}
+                  className="hover:underline cursor-pointer"
+                >
+                  Logout
+                </button>
+              ) : (
+                <Link href="/auth" className="hover:underline">
+                  Login
+                </Link>
+              )}
+            </>
+          )}
         </section>
       </div>
     </header>

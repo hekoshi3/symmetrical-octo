@@ -2,33 +2,28 @@
 
 import "@/app/components/navbar"
 import { useEffect, useState } from "react";
-import { GalleryImage } from "./components/interfaces/GalleryImage";
-import { ModelList } from "./components/interfaces/ModelList";
-import { imgCard } from "./components/imageCard";
-import { modelCard } from "./components/modelCard";
+import { BackdendResIMG, BackdendResMODEL, GalleryImage, ModelList,  } from "./components/interfaces/BackdendRes";
+import { ImgCard } from "./components/imageCard";
+import { ModelCard } from "./components/modelCard";
+import { useAuth } from "./provider/authProvider";
+
+const API_HOST = process.env.NEXT_PUBLIC_BACKEND_API || "http://localhost:8000/api";
 
 export default function MainPage() {
   const [gallery, setGallery] = useState<GalleryImage[]>([]);
   const [models, setModels] = useState<ModelList[]>([]);
-  const [clicked, setClicked] = useState(false);
-
-  const setClickedFunc = async () => {
-    if (clicked) return
-    setClicked(true);
-    return new Promise(() => {
-    setTimeout(() => {
-      setClicked(false)
-    }, 2000);
-  });
-  }
+  const auth = useAuth();
+  const makeAuthenticatedRequest = auth.makeAuthenticatedRequest as (url: string, options?: RequestInit) => Promise<Response>;
 
   useEffect(() => {
     const fetchGallery = async () => {
       try {
-        const res = await fetch("/api/getImages");
+        const res = auth.token && !auth.isLoading
+          ? await makeAuthenticatedRequest(`${API_HOST}/images/`)
+          : await fetch(`${API_HOST}/images/`);
         if (!res.ok) throw new Error("Failed to fetch images");
-        const images: GalleryImage[] = await res.json();
-        setGallery(images.reverse());
+        const images: BackdendResIMG = await res.json();
+        setGallery(images.results.reverse());
       } catch (error) {
         console.error("Error loading gallery:", error);
       }
@@ -36,39 +31,39 @@ export default function MainPage() {
 
     const fetchModels = async () => {
       try {
-        const res = await fetch("/api/getModels");
+        const res = auth.token && !auth.isLoading
+          ? await makeAuthenticatedRequest(`${API_HOST}/models/`)
+          : await fetch(`${API_HOST}/models/`);
         if (!res.ok) throw new Error("Failed to fetch models");
-        const models: ModelList[] = await res.json();
-        setModels(models.reverse());
+        const models: BackdendResMODEL = await res.json();
+        setModels(models.results.reverse());
       } catch (error) {
         console.error("Error loading models:", error);
       }
     };
 
-    fetchModels();
-    fetchGallery();
-  }, []);
+    if (!auth.isLoading) {
+      fetchModels();
+      fetchGallery();
+    }
+  }, [auth.token, auth.isLoading, makeAuthenticatedRequest]);
 
   return (
     <>
-      <aside className={clicked ? "fixed flex w-full p-8 z-10 justify-end" : "hidden"}>
-        <div role="alert" className="alert alert-success ">
-          <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6 shrink-0 stroke-current" fill="none" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
-          </svg>
-          <span>Вы поставили лайк</span>
-        </div>
-      </aside>
       <main className="bg-neutral-900 p-5 pt-1 sm:p-8">
         <section>
           <h1 className="text-3xl font-bold pb-5">Images</h1>
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-4 md:grid-cols-2 xl:grid-cols-4 2xl:grid-cols-6">
-            {gallery.map((img, index) => (imgCard(img, index, setClickedFunc)))}</div> {/*.slice(0, 14)*/}
+            {gallery.map((img, index) => (
+              <ImgCard key={img.id ?? index} img={img} index={index} />
+            ))}</div>
         </section>
         <section>
           <h1 className="text-3xl font-bold pb-5 pt-5">Models</h1>
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-4 md:grid-cols-2 xl:grid-cols-4 2xl:grid-cols-6">
-            {models.slice(0, 14).map((model, index) => (modelCard(model, index)))}</div>
+            {models.slice(0, 14).map((model, index) => (
+              <ModelCard key={model.id ?? index} model={model} index={index} />
+            ))}</div>
         </section>
       </main >
     </>

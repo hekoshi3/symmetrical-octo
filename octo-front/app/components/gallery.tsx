@@ -2,7 +2,7 @@
 
 import Image from "next/image";
 import { useEffect, useState } from "react";
-import { GalleryImage } from "../components/interfaces/GalleryImage";
+import { GalleryImage } from "./interfaces/BackdendRes";
 import Link from "next/link";
 
 export default function GeneratePage() {
