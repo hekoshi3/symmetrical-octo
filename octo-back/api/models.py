@@ -143,3 +143,44 @@ class Like(models.Model):
     def save(self, *args, **kwargs):
         self.full_clean()
         super().save(*args, **kwargs)
+
+class UserFollow(models.Model):
+    # Тот, КТО подписывается
+    follower = models.ForeignKey(User, on_delete=models.CASCADE, related_name="following")
+    # Тот, НА КОГО подписываются
+    following = models.ForeignKey(User, on_delete=models.CASCADE, related_name="followers")
+    
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        # Нельзя подписаться на одного и того же человека дважды
+        unique_together = ('follower', 'following')
+
+    def __str__(self):
+        return f"{self.follower.username} follows {self.following.username}"
+
+class Notification(models.Model):
+    TYPES = [
+        ('LIKE', 'Новый лайк'),
+        ('COMMENT', 'Новый комментарий'),
+        ('FOLLOW', 'Новый подписчик'),
+        ('NEW_POST', 'Новый пост от подписки'),
+    ]
+
+    recipient = models.ForeignKey(User, on_delete=models.CASCADE, related_name="notifications") # Кому пришло
+    actor = models.ForeignKey(User, on_delete=models.CASCADE, related_name="actions_triggered") # Кто сделал
+    type = models.CharField(max_length=20, choices=TYPES)
+    
+    is_read = models.BooleanField(default=False) # Прочитано или нет
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    # Ссылки на объекты (заполняется только одно из них)
+    image = models.ForeignKey(GeneratedImage, on_delete=models.CASCADE, null=True, blank=True)
+    aimodel = models.ForeignKey(AiModel, on_delete=models.CASCADE, null=True, blank=True)
+    comment = models.ForeignKey(Comment, on_delete=models.CASCADE, null=True, blank=True)
+
+    class Meta:
+        ordering = ['-created_at'] # Сначала новые
+
+    def __str__(self):
+        return f"Notify {self.recipient}: {self.type} by {self.actor}"

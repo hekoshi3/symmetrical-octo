@@ -1,6 +1,6 @@
 from django.urls import path, include
 from rest_framework.routers import DefaultRouter
-from .views import AiModelViewSet, GeneratedImageViewSet, CommentViewSet, LikeViewSet, UserViewSet, RegisterView
+from .views import AiModelViewSet, GeneratedImageViewSet, CommentViewSet, LikeViewSet, UserViewSet, RegisterView, UserFollowViewSet, NotificationViewSet
 from rest_framework_simplejwt.views import (
     TokenObtainPairView,
     TokenRefreshView,
@@ -12,6 +12,9 @@ router.register(r'images', GeneratedImageViewSet, basename='generatedimage')
 router.register(r'comments', CommentViewSet)
 router.register(r'likes', LikeViewSet)
 router.register(r'users', UserViewSet)
+router.register(r'follows', UserFollowViewSet)
+router.register(r'notifications', NotificationViewSet, basename='notification')
+
 
 urlpatterns = [
     path('', include(router.urls)),

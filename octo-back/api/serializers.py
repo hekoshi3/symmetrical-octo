@@ -2,7 +2,7 @@ import hashlib
 from PIL import Image
 from rest_framework import serializers
 from django.contrib.auth.models import User
-from .models import AiModel, GeneratedImage, UserProfile, Comment, Like
+from .models import AiModel, GeneratedImage, UserProfile, Comment, Like, UserFollow, Notification
 import re # Добавили регулярки
 
 # --- Вспомогательный сериализатор для Автора ---
@@ -17,9 +17,21 @@ class UserProfileSerializer(serializers.ModelSerializer):
 class UserSerializer(serializers.ModelSerializer):
     profile = UserProfileSerializer(read_only=True)
 
+    followers_count = serializers.SerializerMethodField()
+    is_following = serializers.SerializerMethodField()
+
     class Meta:
         model = User
-        fields = ['id', 'username', 'profile']
+        fields = ['id', 'username', 'profile', 'followers_count', 'is_following'] # Добавил поля в fields
+
+    def get_followers_count(self, obj):
+        return obj.followers.count()
+
+    def get_is_following(self, obj):
+        request = self.context.get('request')
+        if request and request.user.is_authenticated:
+            return UserFollow.objects.filter(follower=request.user, following=obj).exists()
+        return False
 
 
 # --- Сериализатор Моделей ---
@@ -30,7 +42,7 @@ class AiModelSerializer(serializers.ModelSerializer):
     class Meta:
         model = AiModel
         fields = '__all__'
-        read_only_fields = ['author', 'created_at', 'downloads_count', 'likes_count', 'file_hash', 'is_published']
+        read_only_fields = ['author', 'created_at', 'downloads_count', 'likes_count', 'file_hash']
 
     def get_is_liked(self, obj):
         request = self.context.get('request')
@@ -237,3 +249,32 @@ class RegisterSerializer(serializers.ModelSerializer):
             email=validated_data.get('email', '')
         )
         return user
+
+
+class UserFollowSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = UserFollow
+        fields = ['following']
+    
+    def create(self, validated_data):
+        follower = self.context['request'].user
+        following = validated_data['following']
+
+        if follower == following:
+            raise serializers.ValidationError("Нельзя подписаться на самого себя!")
+
+        # Логика Toggle (Подписка / Отписка)
+        follow_instance = UserFollow.objects.filter(follower=follower, following=following).first()
+        
+        if follow_instance:
+            follow_instance.delete()
+            raise serializers.ValidationError("Unfollowed") # Это не ошибка, это сигнал фронту
+        
+        return UserFollow.objects.create(follower=follower, following=following)
+
+class NotificationSerializer(serializers.ModelSerializer):
+    actor = UserSerializer(read_only=True) # Разворачиваем инфу о том, кто сделал действие
+    
+    class Meta:
+        model = Notification
+        fields = '__all__'
