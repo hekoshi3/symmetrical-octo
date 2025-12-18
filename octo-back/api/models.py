@@ -3,12 +3,26 @@ from django.contrib.auth.models import User
 from django.core.exceptions import ValidationError
 from django.core.validators import FileExtensionValidator
 
+
+def model_directory_path(instance, filename):
+    # Файл будет загружен в MEDIA_ROOT/models/user_<id>/<filename>
+    return f'models/user_{instance.author.id}/{filename}'
+
+def image_directory_path(instance, filename):
+    # Картинки тоже по папкам юзеров: MEDIA_ROOT/images/user_<id>/<filename>
+    return f'images/user_{instance.author.id}/{filename}'
+
+def avatar_directory_path(instance, filename):
+    # Аватарки: MEDIA_ROOT/users/avatars/user_<id>/<filename>
+    return f'users/avatars/user_{instance.user.id}/{filename}'
+
+
 # --- ПРОФИЛЬ ---
 class UserProfile(models.Model):
     # Используем OneToOne, как ты и хотел
     user = models.OneToOneField(User, on_delete=models.CASCADE, related_name="profile")
     bio = models.TextField(max_length=500, blank=True)
-    avatar = models.ImageField(upload_to="users/avatars/", blank=True, null=True)
+    avatar = models.ImageField(upload_to=avatar_directory_path, blank=True, null=True)
 
     def __str__(self):
         return self.user.username
@@ -30,7 +44,7 @@ class AiModel(models.Model):
     
     # Файл модели + валидация (ТЗ 5.2)
     file = models.FileField(
-        upload_to="models/", 
+        upload_to=model_directory_path, 
         max_length=500,
         validators=[FileExtensionValidator(allowed_extensions=['safetensors', 'ckpt', 'pt'])]
     )
@@ -57,7 +71,7 @@ class AiModel(models.Model):
 # --- ГЕНЕРАЦИЯ (КАРТИНКА) ---
 class GeneratedImage(models.Model):
     author = models.ForeignKey(User, on_delete=models.CASCADE, related_name="images")
-    image = models.ImageField(upload_to="images/", max_length=500)
+    image = models.ImageField(upload_to=image_directory_path, max_length=500)
     
     # Ссылка на модель (если это пример работы конкретной модели)
     linked_model = models.ForeignKey(
