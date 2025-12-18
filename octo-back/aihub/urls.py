@@ -7,6 +7,7 @@ urlpatterns = [
     path('admin/', admin.site.urls),
     # Подключаем наше API по адресу /api/
     path('api/', include('api.urls')), 
+    path('api-auth/', include('rest_framework.urls')), 
 ]
 
 # Это нужно, чтобы Django отдавал картинки и файлы в режиме разработки (DEBUG=True)

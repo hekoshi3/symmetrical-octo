@@ -34,15 +34,21 @@ class AiModel(models.Model):
         max_length=500,
         validators=[FileExtensionValidator(allowed_extensions=['safetensors', 'ckpt', 'pt'])]
     )
-    
-    # Обложка модели
-    cover_image = models.ImageField(upload_to="models/covers/", blank=True, null=True)
-
+    file_hash = models.CharField(max_length=64, blank=True, null=True) 
     # Статистика
     downloads_count = models.IntegerField(default=0)
     # Лайки храним в лайках, но дублируем счетчиком для быстрой сортировки
     likes_count = models.IntegerField(default=0)
-    
+
+    featured_image = models.ForeignKey(
+        'GeneratedImage', 
+        on_delete=models.SET_NULL, 
+        null=True, 
+        blank=True, 
+        related_name='featured_in_models',
+        help_text="Главная картинка (обложка) этой модели"
+    )
+    is_published = models.BooleanField(default=False)
     created_at = models.DateTimeField(auto_now_add=True)
 
     def __str__(self):
@@ -71,7 +77,7 @@ class GeneratedImage(models.Model):
     
     # Параметры генерации храним в JSON (Prompt, Seed, Sampler...)
     generation_params = models.JSONField(default=dict, blank=True)
-    
+    is_published = models.BooleanField(default=False)
     likes_count = models.IntegerField(default=0)
     created_at = models.DateTimeField(auto_now_add=True)
 

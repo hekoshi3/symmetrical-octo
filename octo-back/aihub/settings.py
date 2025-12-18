@@ -135,3 +135,35 @@ CORS_ORIGIN_WHITELIST = [
 ]
 MEDIA_URL = '/media/'
 MEDIA_ROOT = BASE_DIR / 'media'
+
+# --- DRF SETTINGS ---
+REST_FRAMEWORK = {
+    'DEFAULT_AUTHENTICATION_CLASSES': (
+        # Используем JWT для фронтенда
+        'rest_framework_simplejwt.authentication.JWTAuthentication',
+        # Оставляем Сессии для админки и браузерного API (чтобы ты мог тестить через браузер)
+        'rest_framework.authentication.SessionAuthentication',
+    ),
+    'DEFAULT_PERMISSION_CLASSES': [
+        # По умолчанию - только чтение. Изменять - только с токеном.
+        'rest_framework.permissions.IsAuthenticatedOrReadOnly',
+    ],
+    # Пагинация у нас уже настроена во views, но можно задать глобально тут
+    'DEFAULT_PAGINATION_CLASS': 'rest_framework.pagination.PageNumberPagination',
+    'PAGE_SIZE': 20,
+}
+
+# --- JWT SETTINGS ---
+from datetime import timedelta
+
+SIMPLE_JWT = {
+    # Время жизни Access токена (короткий). Для разработки ставлю 60 минут, чтобы не бесило.
+    # В продакшене лучше 5-15 минут.
+    'ACCESS_TOKEN_LIFETIME': timedelta(minutes=60),
+    # Время жизни Refresh токена (длинный). С ним юзер может обновить Access без логина.
+    'REFRESH_TOKEN_LIFETIME': timedelta(days=1),
+    
+    'ROTATE_REFRESH_TOKENS': False,
+    'BLACKLIST_AFTER_ROTATION': False,
+    'AUTH_HEADER_TYPES': ('Bearer',), # Важно: Фронт должен слать "Authorization: Bearer <token>"
+}

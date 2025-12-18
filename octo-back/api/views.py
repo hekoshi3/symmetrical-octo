@@ -4,6 +4,10 @@ from rest_framework.response import Response
 from rest_framework.permissions import IsAuthenticatedOrReadOnly, IsAuthenticated
 from rest_framework.pagination import PageNumberPagination
 from django_filters.rest_framework import DjangoFilterBackend
+from django.shortcuts import redirect
+from rest_framework import generics
+from rest_framework.permissions import AllowAny
+from .serializers import RegisterSerializer # не забудь импортировать новый сериализатор
 
 from django.contrib.auth.models import User
 from .models import AiModel, GeneratedImage, Comment, Like
@@ -15,6 +19,7 @@ from .serializers import (
     UserSerializer
 )
 from .permissions import IsAuthorOrReadOnly
+from django.db.models import Q
 
 # --- Пагинация (чтобы не грузить 1000 картинок сразу) ---
 class StandardPagination(PageNumberPagination):
@@ -29,7 +34,6 @@ class AiModelViewSet(viewsets.ModelViewSet):
     API для моделей.
     Поддерживает: Поиск по названию, Фильтр по типу и базовой модели, Сортировку.
     """
-    queryset = AiModel.objects.all().order_by('-created_at')
     serializer_class = AiModelSerializer
     permission_classes = [IsAuthenticatedOrReadOnly, IsAuthorOrReadOnly]
     pagination_class = StandardPagination
@@ -44,20 +48,33 @@ class AiModelViewSet(viewsets.ModelViewSet):
     # 3. Как сортировать (?ordering=-likes_count)
     ordering_fields = ['likes_count', 'downloads_count', 'created_at']
 
-    # Счетчик скачиваний (POST /api/models/5/download/)
-    @action(detail=True, methods=['post'])
+    # Счетчик скачиваний (GET /api/models/5/download/)
+    @action(detail=True, methods=['get'])
     def download(self, request, pk=None):
         instance = self.get_object()
+        
+        # Увеличиваем счетчик
         instance.downloads_count += 1
         instance.save()
-        return Response({'status': 'download counted', 'count': instance.downloads_count})
+        
+        # ПЕРЕНАПРАВЛЯЕМ пользователя на реальный файл
+        return redirect(instance.file.url)
+    
+    def get_queryset(self):
+        # Если юзер аноним - только опубликованные
+        if not self.request.user.is_authenticated:
+            return AiModel.objects.filter(is_published=True).order_by('-created_at')
+        
+        # Если юзер вошел - опубликованные ВСЕХ + черновики СВОИ
+        return AiModel.objects.filter(
+            Q(is_published=True) | Q(author=self.request.user)
+        ).order_by('-created_at')
 
 
 class GeneratedImageViewSet(viewsets.ModelViewSet):
     """
     API для картинок.
     """
-    queryset = GeneratedImage.objects.all().order_by('-created_at')
     serializer_class = GeneratedImageSerializer
     permission_classes = [IsAuthenticatedOrReadOnly, IsAuthorOrReadOnly]
     pagination_class = StandardPagination
@@ -79,6 +96,14 @@ class GeneratedImageViewSet(viewsets.ModelViewSet):
         recent_images = self.queryset[:20]
         serializer = self.get_serializer(recent_images, many=True)
         return Response(serializer.data)
+    
+    def get_queryset(self):
+        if not self.request.user.is_authenticated:
+            return GeneratedImage.objects.filter(is_published=True).order_by('-created_at')
+            
+        return GeneratedImage.objects.filter(
+            Q(is_published=True) | Q(author=self.request.user)
+        ).order_by('-created_at')
 
 
 class CommentViewSet(viewsets.ModelViewSet):
@@ -108,3 +133,8 @@ class UserViewSet(viewsets.ReadOnlyModelViewSet):
     """
     queryset = User.objects.all()
     serializer_class = UserSerializer
+
+class RegisterView(generics.CreateAPIView):
+    queryset = User.objects.all()
+    permission_classes = (AllowAny,) # Разрешаем всем (даже гостям)
+    serializer_class = RegisterSerializer
