@@ -1,0 +1,118 @@
+import { NextResponse } from "next/server";
+import path from "path";
+import fsp from "fs/promises";
+import sharp from "sharp";
+import fs from "fs";
+import { log } from "console";
+
+const IMAGE_EXTENSIONS = [".jpg", ".jpeg", ".png", ".webp"];
+
+let parsedInfo = "";
+let steps = "";
+let sampler = "";
+let sheduler = "";
+let cfg = "";
+let seed = 0;
+let modelhash = "";
+let modelname = "";
+let splittedPInfo;
+
+async function getImagesInDirectory(dir: string): Promise<
+  {
+    path: string;
+    width: number;
+    height: number;
+    sampler: string;
+    sheduler: string;
+    modelname: string;
+    seed: number;
+  }[]
+> {
+  const fullDir = path.join(process.cwd(), "public", dir);
+  let result: {
+    path: string;
+    width: number;
+    height: number;
+    sampler: string;
+    sheduler: string;
+    modelname: string;
+    seed: number;
+  }[] = [];
+
+  if (!fs.existsSync(path.join(process.cwd(), "public"))) {
+    log(
+      "OwlLog || Cannot find requred path at /public; creating",
+      path.join(process.cwd(), "public")
+    );
+    fs.mkdirSync(path.join(process.cwd(), "public"));
+  }
+
+  if (!fs.existsSync(path.join(process.cwd(), "public", dir))) {
+    log(
+      `OwlLog || Cannot find requred path at /public/`,
+      dir,
+      "; Creating",
+      path.join(process.cwd(), "public", dir)
+    );
+    fs.mkdirSync(path.join(process.cwd(), "public", dir));
+  }
+
+  try {
+    const entries = await fsp.readdir(fullDir, { withFileTypes: true });
+
+    for (const entry of entries) {
+      const entryPath = path.join(dir, entry.name);
+
+      if (entry.isDirectory()) {
+        const nested = await getImagesInDirectory(entryPath);
+        result = result.concat(nested);
+      } else if (
+        IMAGE_EXTENSIONS.includes(path.extname(entry.name).toLowerCase())
+      ) {
+        const fullPath = path.join(process.cwd(), "public", entryPath);
+        const metadata = await sharp(fullPath).metadata();
+        if (metadata.comments) {
+          const info = metadata.comments[0].text.split("\n");
+          info.forEach((element) => {
+            if (element.startsWith("Steps:")) parsedInfo = element;
+          });
+          splittedPInfo = parsedInfo.split(", ");
+          splittedPInfo.forEach((element) => {
+            if (element.startsWith("Steps:")) steps = element.split(": ")[1];
+            if (element.startsWith("Sampler:"))
+              sampler = element.split(": ")[1];
+            if (element.startsWith("Schedule type: "))
+              sheduler = element.split(": ")[1];
+            if (element.startsWith("CFG scale: ")) cfg = element.split(": ")[1];
+            if (element.startsWith("Seed: "))
+              seed = Number(element.split(": ")[1]);
+            if (element.startsWith("Model hash: "))
+              modelhash = element.split(": ")[1];
+            if (element.startsWith("Model: "))
+              modelname = element.split(": ")[1];
+          });
+        }
+        if (metadata.width && metadata.height) {
+          result.push({
+            path: "/" + entryPath.replace(/\\/g, "/"),
+            width: metadata.width,
+            height: metadata.height,
+            sampler: sampler,
+            sheduler: sheduler,
+            modelname: modelname,
+            seed: seed,
+          });
+        }
+      }
+    }
+  } catch (err) {
+    console.error("Error scanning directory:", err);
+  }
+
+  return result;
+}
+
+export async function GET() {
+  const images = await getImagesInDirectory("generated");
+  return NextResponse.json(images);
+}
