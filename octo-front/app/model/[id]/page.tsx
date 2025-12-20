@@ -1,3 +1,5 @@
+/* eslint-disable react-hooks/exhaustive-deps */
+/* eslint-disable @typescript-eslint/no-explicit-any */
 "use client";
 
 import { useEffect, useState, useRef } from "react";
@@ -21,11 +23,16 @@ export default function ModelDetailPage() {
     const [commentText, setCommentText] = useState("");
     const [isSubmittingComment, setIsSubmittingComment] = useState(false);
     const [isDownloading, setIsDownloading] = useState(false);
+
+    // Состояние тегов (нормализованное)
+    const [tags, setTags] = useState<string[]>([]);
     
     const auth = useAuth();
     const makeAuthenticatedRequest = auth.makeAuthenticatedRequest as (url: string, options?: RequestInit) => Promise<Response>;
     
-    // Like state management (similar to imageCard)
+    // Проверка на авторство
+    const isAuthor = auth.user && model && auth.user.username === model.author.username;
+
     const [optimisticLiked, setOptimisticLiked] = useState<boolean | null>(null);
     const [optimisticCount, setOptimisticCount] = useState<number | null>(null);
     const [isUpdatingLike, setIsUpdatingLike] = useState<boolean>(false);
@@ -39,21 +46,20 @@ export default function ModelDetailPage() {
                 setIsLoading(true);
                 setError(null);
 
-                // Fetch model details
                 const modelRes = auth.token
                     ? await makeAuthenticatedRequest(`${API_HOST}/models/${modelId}/`)
                     : await fetch(`${API_HOST}/models/${modelId}/`);
                 
-                if (!modelRes.ok) {
-                    throw new Error("Failed to fetch model");
-                }
+                if (!modelRes.ok) throw new Error("Failed to fetch model");
                 
                 const modelData: ModelList = await modelRes.json();
                 setModel(modelData);
-                setOptimisticLiked(null);
-                setOptimisticCount(null);
 
-                // Fetch comments
+                // Нормализация тегов django-taggit
+                if (Array.isArray(modelData.tags)) {
+                    setTags(modelData.tags.map((t: any) => typeof t === "string" ? t : t.name));
+                }
+
                 const commentsRes = auth.token
                     ? await makeAuthenticatedRequest(`${API_HOST}/comments/?aimodel=${modelId}`)
                     : await fetch(`${API_HOST}/comments/?aimodel=${modelId}`);
@@ -63,7 +69,6 @@ export default function ModelDetailPage() {
                     setComments(commentsData.results || []);
                 }
             } catch (err: any) {
-                console.error("Error loading model:", err);
                 setError(err.message || "Failed to load model");
             } finally {
                 setIsLoading(false);
@@ -71,75 +76,31 @@ export default function ModelDetailPage() {
         };
 
         fetchModelData();
-    }, [modelId, auth.token, auth.isLoading, makeAuthenticatedRequest]);
+    }, [modelId, auth.token, auth.isLoading]);
 
-    // Clear optimistic updates when props catch up
     useEffect(() => {
         if (!model || auth.isLoading || !auth.token) return;
-        
-        setOptimisticLiked(prev => {
-            if (prev !== null && model.is_liked === prev) {
-                return null;
-            }
-            return prev;
-        });
-        
-        setOptimisticCount(prev => {
-            if (prev !== null && model.likes_count === prev) {
-                return null;
-            }
-            return prev;
-        });
+        setOptimisticLiked(prev => (prev !== null && model.is_liked === prev) ? null : prev);
+        setOptimisticCount(prev => (prev !== null && model.likes_count === prev) ? null : prev);
     }, [model?.is_liked, model?.likes_count, auth.isLoading, auth.token, model]);
 
-    const displayLiked = (() => {
-        if (pendingLikeRef.current !== null) {
-            return pendingLikeRef.current;
-        }
-        if (optimisticLiked !== null) {
-            return optimisticLiked;
-        }
-        if (!auth.token || auth.isLoading || !model) {
-            return false;
-        }
-        return model.is_liked ?? false;
-    })();
-
-    const displayCount = (() => {
-        if (optimisticCount !== null) {
-            return optimisticCount;
-        }
-        return model?.likes_count ?? 0;
-    })();
+    const displayLiked = pendingLikeRef.current !== null ? pendingLikeRef.current : (optimisticLiked !== null ? optimisticLiked : (model?.is_liked ?? false));
+    const displayCount = optimisticCount !== null ? optimisticCount : (model?.likes_count ?? 0);
 
     const handleLikeClick = async (e: React.MouseEvent) => {
-        e.preventDefault();
-        e.stopPropagation();
-        
+        e.preventDefault(); e.stopPropagation();
         if (!auth.token || isUpdatingLike || auth.isLoading || !model) return;
-
-        const currentLiked = displayLiked;
         const currentCount = displayCount;
-        const nextLiked = !currentLiked;
-        
+        const nextLiked = !displayLiked;
         pendingLikeRef.current = nextLiked;
         setIsUpdatingLike(true);
-        
         setOptimisticLiked(nextLiked);
         setOptimisticCount(nextLiked ? currentCount + 1 : Math.max(currentCount - 1, 0));
 
         makeAuthenticatedRequest(`${API_HOST}/likes/`, {
             method: "POST",
-            headers: {
-                "Content-Type": "application/json",
-            },
+            headers: { "Content-Type": "application/json" },
             body: JSON.stringify({ image: null, aimodel: model.id }),
-        }).then((response) => {
-            if (!response.ok) {
-                response.text().catch(() => {});
-            }
-        }).catch(() => {
-            // Silently ignore errors
         }).finally(() => {
             setTimeout(() => {
                 pendingLikeRef.current = null;
@@ -150,42 +111,21 @@ export default function ModelDetailPage() {
 
     const handleDownload = async () => {
         if (!model || isDownloading) return;
-
         setIsDownloading(true);
         try {
-            // The download endpoint redirects to the file and increments the counter
             const downloadUrl = `${API_HOST}/models/${model.id}/download/`;
-            
             if (auth.token) {
-                // For authenticated users, use authenticated request
-                const response = await makeAuthenticatedRequest(downloadUrl, {
-                    method: "GET",
-                    redirect: "follow",
-                });
-                
+                const response = await makeAuthenticatedRequest(downloadUrl, { method: "GET", redirect: "follow" });
                 if (response.ok || response.redirected) {
-                    // If redirected, get the final URL and download
-                    const finalUrl = response.url || downloadUrl;
-                    const a = document.createElement("a");
-                    a.href = finalUrl;
-                    a.download = model.file.split("/").pop() || `model-${model.id}`;
-                    document.body.appendChild(a);
-                    a.click();
-                    document.body.removeChild(a);
-                    
-                    // Refresh model data to update download count
+                    window.location.href = response.url || downloadUrl;
                     const modelRes = await makeAuthenticatedRequest(`${API_HOST}/models/${model.id}/`);
-                    if (modelRes.ok) {
-                        const updatedModel: ModelList = await modelRes.json();
-                        setModel(updatedModel);
-                    }
+                    if (modelRes.ok) setModel(await modelRes.json());
                 }
             } else {
-                // For unauthenticated users, just open the URL (will redirect)
                 window.open(downloadUrl, "_blank");
             }
         } catch (error) {
-            console.error("Error downloading model:", error);
+            console.error(error);
         } finally {
             setIsDownloading(false);
         }
@@ -193,82 +133,47 @@ export default function ModelDetailPage() {
 
     const handleSubmitComment = async (e: React.FormEvent) => {
         e.preventDefault();
-        
         if (!auth.token || !commentText.trim() || isSubmittingComment || !model) return;
-
         setIsSubmittingComment(true);
-
         try {
             const response = await makeAuthenticatedRequest(`${API_HOST}/comments/`, {
                 method: "POST",
-                headers: {
-                    "Content-Type": "application/json",
-                },
+                headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({ aimodel: model.id, text: commentText.trim() }),
             });
-
             if (response.ok) {
                 const newComment: Comment = await response.json();
                 setComments(prev => [newComment, ...prev]);
                 setCommentText("");
             }
         } catch (error) {
-            console.error("Error submitting comment:", error);
+            console.error(error);
         } finally {
             setIsSubmittingComment(false);
         }
     };
 
     const formatDate = (dateString: string | Date) => {
-        const date = new Date(dateString);
-        return date.toLocaleDateString("ru-RU", {
-            year: "numeric",
-            month: "long",
-            day: "numeric",
-            hour: "2-digit",
-            minute: "2-digit",
+        return new Date(dateString).toLocaleDateString("ru-RU", {
+            year: "numeric", month: "long", day: "numeric"
         });
     };
 
-    if (isLoading) {
-        return (
-            <main className="flex w-screen items-center justify-center min-h-screen bg-neutral-900">
-                <div className="text-white text-xl">Loading...</div>
-            </main>
-        );
-    }
-
-    if (error || !model) {
-        return (
-            <main className="flex w-screen items-center justify-center min-h-screen bg-neutral-900">
-                <div className="text-red-400 text-xl">
-                    {error || "Model not found"}
-                </div>
-                <Link href="/" className="ml-4 text-blue-400 hover:underline">
-                    Go back
-                </Link>
-            </main>
-        );
-    }
+    if (isLoading) return <main className="flex w-screen items-center justify-center min-h-screen bg-neutral-900"><div className="loading loading-ring loading-xl text-white"></div></main>;
+    if (error || !model) return <main className="flex w-screen flex-col items-center justify-center min-h-screen bg-neutral-900 text-white"><p className="text-red-400 text-xl">{error || "Model not found"}</p><Link href="/" className="mt-4 text-accent hover:underline">Go back</Link></main>;
 
     return (
-        <main className="bg-neutral-900 min-h-screen">
+        <main className="bg-neutral-900 min-h-screen pb-20">
             <div className="container mx-auto px-4 py-8 max-w-7xl">
-                {/* Back button */}
-                <button
-                    onClick={() => router.back()}
-                    className="mb-6 text-neutral-400 hover:text-white transition-colors"
-                >
-                    ← Back
-                </button>
+                <button onClick={() => router.back()} className="mb-6 text-neutral-400 hover:text-white transition-colors flex items-center gap-2">← Back</button>
 
-                <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
-                    {/* Left side - Featured Image */}
-                    <div className="flex flex-col">
-                        <div className="relative w-full aspect-square bg-neutral-800 rounded-lg overflow-hidden">
+                <div className="grid grid-cols-1 lg:grid-cols-2 gap-12">
+                    {/* Left Column - Visuals */}
+                    <div className="flex flex-col gap-6">
+                        <div className="relative w-full aspect-square bg-neutral-800 rounded-2xl overflow-hidden border border-neutral-700 shadow-2xl">
                             <Image
                                 src={model.featured_image_url || "/image404.png"}
-                                alt={model.name || "Model"}
+                                alt={model.name}
                                 fill
                                 className="object-cover"
                                 priority
@@ -276,185 +181,143 @@ export default function ModelDetailPage() {
                         </div>
                     </div>
 
-                    {/* Right side - Info */}
-                    <div className="flex flex-col gap-6">
-                        {/* Model name and type */}
-                        <div>
-                            <h1 className="text-3xl font-bold text-white mb-2">
-                                {model.name || "Unnamed Model"}
-                            </h1>
-                            <div className="flex items-center gap-4">
-                                <span className="px-3 py-1 bg-blue-600 text-white rounded-full text-sm">
-                                    {model.model_type || "Unknown Type"}
-                                </span>
-                                {model.is_published ? (
-                                    <span className="px-3 py-1 bg-green-600 text-white rounded-full text-sm">
-                                        Published
+                    {/* Right Column - Information */}
+                    <div className="flex flex-col gap-8">
+                        {/* Header Section */}
+                        <div className="flex justify-between items-start gap-4">
+                            <div className="flex-1">
+                                <h1 className="text-4xl font-bold text-white mb-3 leading-tight">{model.name || "Unnamed Model"}</h1>
+                                <div className="flex flex-wrap items-center gap-2">
+                                    <span className="px-3 py-1 bg-accent/20 text-accent border border-accent/30 rounded-full text-xs font-bold uppercase">
+                                        {model.model_type || "Unknown Type"}
                                     </span>
-                                ) : (
-                                    <span className="px-3 py-1 bg-yellow-600 text-white rounded-full text-sm">
-                                        Draft
-                                    </span>
-                                )}
+                                    {!model.is_published && (
+                                        <span className="px-3 py-1 bg-yellow-500/20 text-yellow-500 border border-yellow-500/30 rounded-full text-xs font-bold uppercase">Draft</span>
+                                    )}
+                                </div>
                             </div>
+                            {isAuthor && (
+                                <Link 
+                                    href={`/model/edit/${model.id}`}
+                                    className="bg-neutral-700 hover:bg-neutral-600 text-white px-4 py-2 rounded-lg transition-colors text-sm font-semibold flex items-center gap-2"
+                                >
+                                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" /></svg>
+                                    Edit
+                                </Link>
+                            )}
                         </div>
 
-                        {/* Author info */}
-                        <div className="flex items-center gap-4">
-                            <Link href={`/user/${model.author.id}`} className="flex items-center gap-3">
+                        {/* Author */}
+                        <div className="flex items-center gap-4 bg-neutral-800/50 p-4 rounded-xl border border-neutral-700/50">
+                            <Link href={`/user/${model.author.username}`} className="flex items-center gap-4 group">
                                 <Image
                                     src={model.author.profile?.avatar || "/img/nacho.png"}
                                     alt={model.author.username}
-                                    width={48}
-                                    height={48}
-                                    className="rounded-full"
+                                    width={56} height={56}
+                                    className="rounded-full border-2 border-neutral-600 group-hover:border-accent transition-all"
                                 />
                                 <div>
-                                    <h2 className="text-xl font-semibold text-white">
-                                        {model.author.username}
-                                    </h2>
-                                    <p className="text-sm text-neutral-400">
-                                        {model.author.followers_count} подписчиков
-                                    </p>
+                                    <h2 className="text-xl font-bold text-white group-hover:text-accent transition-colors">@{model.author.username}</h2>
+                                    <p className="text-sm text-neutral-400">{model.author.followers_count} followers</p>
                                 </div>
                             </Link>
                         </div>
 
-                        {/* Description */}
-                        {model.description && (
-                            <div className="bg-neutral-800 rounded-lg p-6">
-                                <h3 className="text-xl font-semibold mb-3 text-white">Description</h3>
-                                <p className="text-neutral-300 whitespace-pre-wrap break-words">
-                                    {model.description}
-                                </p>
+                        {/* Tags */}
+                        {tags.length > 0 && (
+                            <div className="flex flex-wrap gap-2">
+                                {tags.map(tag => (
+                                    <span key={tag} className="bg-neutral-800 text-neutral-300 px-3 py-1 rounded-md text-sm border border-neutral-700">#{tag}</span>
+                                ))}
                             </div>
                         )}
 
-                        {/* Stats and actions */}
-                        <div className="flex flex-wrap items-center gap-4">
+                        {/* Description */}
+                        <div className="bg-neutral-800 p-6 rounded-2xl border border-neutral-700">
+                            <h3 className="text-sm uppercase tracking-widest text-neutral-500 font-bold mb-4">Description</h3>
+                            <p className="text-neutral-300 leading-relaxed whitespace-pre-wrap break-words">
+                                {model.description || <span className="italic opacity-50">No description provided.</span>}
+                            </p>
+                        </div>
+
+                        {/* Stats & Download */}
+                        <div className="flex flex-col gap-4">
+                            <div className="flex items-center justify-between p-4 bg-neutral-800/30 rounded-xl border border-neutral-700/30">
+                                <div className="flex items-center gap-6">
+                                    <button
+                                        onClick={handleLikeClick}
+                                        disabled={isUpdatingLike || auth.isLoading || !auth.token}
+                                        className={`flex items-center gap-2 transition-all ${displayLiked ? 'text-accent scale-110' : 'text-neutral-400 hover:text-white'}`}
+                                    >
+                                        <Image src={displayLiked ? "/heart-full-white.svg" : "/heart-white.svg"} alt="Like" width={24} height={24} className={displayLiked ? "invert-0" : ""} />
+                                        <span className="text-xl font-bold">{displayCount}</span>
+                                    </button>
+                                    <div className="flex items-center gap-2 text-neutral-400">
+                                        <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" /></svg>
+                                        <span className="text-xl font-bold text-neutral-200">{model.downloads_count}</span>
+                                    </div>
+                                </div>
+                                <span className="text-neutral-500 text-xs font-mono uppercase">{formatDate(model.created_at)}</span>
+                            </div>
+
                             <button
-                                className="flex items-center gap-2 bg-white/20 hover:bg-white/30 cursor-pointer rounded-sm px-4 py-2 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-                                onClick={handleLikeClick}
-                                disabled={isUpdatingLike || auth.isLoading || !auth.token}
-                                type="button"
+                                onClick={handleDownload}
+                                disabled={isDownloading}
+                                className="w-full bg-accent hover:bg-opacity-80 text-black font-black py-4 rounded-xl transition-all flex items-center justify-center gap-3 shadow-lg shadow-accent/10 disabled:opacity-50"
                             >
-                                <Image
-                                    src={displayLiked ? "/heart-full-white.svg" : "/heart-white.svg"}
-                                    alt={displayLiked ? "Liked" : "Not liked"}
-                                    width={20}
-                                    height={20}
-                                />
-                                <span className="text-lg font-semibold">{displayCount}</span>
+                                {isDownloading ? <span className="loading loading-spinner"></span> : <>DOWNLOAD MODEL <span className="opacity-50 text-xs">({model.file_hash?.substring(0,8) || "N/A"})</span></>}
                             </button>
-                            
-                            <div className="flex items-center gap-2 text-neutral-400">
-                                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
-                                </svg>
-                                <span>{model.downloads_count} downloads</span>
-                            </div>
-                            
-                            <span className="text-neutral-400 text-sm">
-                                {formatDate(model.created_at)}
-                            </span>
                         </div>
 
-                        {/* Download button */}
-                        <button
-                            onClick={handleDownload}
-                            disabled={isDownloading}
-                            className="w-full bg-blue-600 hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed text-white font-semibold py-3 px-6 rounded-lg transition-colors flex items-center justify-center gap-2"
-                        >
-                            {isDownloading ? (
-                                <>
-                                    <svg className="animate-spin h-5 w-5" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-                                        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                                        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-                                    </svg>
-                                    Downloading...
-                                </>
-                            ) : (
-                                <>
-                                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
-                                    </svg>
-                                    Download Model
-                                </>
-                            )}
-                        </button>
-
-                        {/* Model details */}
-                        <div className="bg-neutral-800 rounded-lg p-6">
-                            <h3 className="text-xl font-semibold mb-4 text-white">Model Details</h3>
-                            <div className="space-y-3 text-sm">
-                                {model.file && (
-                                    <div>
-                                        <span className="text-neutral-400">File:</span>
-                                        <span className="ml-2 text-white font-mono break-all">{model.file}</span>
-                                    </div>
-                                )}
-                                {model.file_hash && (
-                                    <div>
-                                        <span className="text-neutral-400">File Hash:</span>
-                                        <span className="ml-2 text-white font-mono break-all text-xs">{model.file_hash}</span>
-                                    </div>
-                                )}
-                            </div>
-                        </div>
-
-                        {/* Comments section */}
-                        <div className="bg-neutral-800 rounded-lg p-6">
-                            <h3 className="text-xl font-semibold mb-4 text-white">
-                                Comments ({comments.length})
+                        {/* Comments Section */}
+                        <div className="mt-8 border-t border-neutral-800 pt-10">
+                            <h3 className="text-2xl font-bold text-white mb-8 flex items-center gap-3">
+                                Comments <span className="text-sm bg-neutral-800 px-3 py-1 rounded-full text-neutral-500">{comments.length}</span>
                             </h3>
 
-                            {/* Comment form */}
-                            {auth.token && (
-                                <form onSubmit={handleSubmitComment} className="mb-6">
+                            {auth.token ? (
+                                <form onSubmit={handleSubmitComment} className="mb-10 group">
                                     <textarea
                                         value={commentText}
                                         onChange={(e) => setCommentText(e.target.value)}
                                         placeholder="Add a comment..."
-                                        className="w-full bg-neutral-700 text-white rounded-lg p-3 mb-2 resize-none focus:outline-none focus:ring-2 focus:ring-blue-500"
-                                        rows={3}
+                                        className="w-full bg-neutral-800 border border-neutral-700 text-white rounded-xl p-4 min-h-[100px] focus:border-accent outline-none transition-all"
                                         disabled={isSubmittingComment}
                                     />
-                                    <button
-                                        type="submit"
-                                        disabled={!commentText.trim() || isSubmittingComment}
-                                        className="bg-blue-600 hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed text-white px-4 py-2 rounded-lg transition-colors"
-                                    >
-                                        {isSubmittingComment ? "Posting..." : "Post Comment"}
-                                    </button>
+                                    <div className="flex justify-end mt-2">
+                                        <button
+                                            type="submit"
+                                            disabled={!commentText.trim() || isSubmittingComment}
+                                            className="bg-neutral-200 text-black px-6 py-2 rounded-lg font-bold hover:bg-white transition-colors disabled:opacity-50"
+                                        >
+                                            {isSubmittingComment ? "Posting..." : "Post Comment"}
+                                        </button>
+                                    </div>
                                 </form>
+                            ) : (
+                                <div className="bg-neutral-800/50 border border-neutral-700 border-dashed p-6 rounded-xl text-center mb-8">
+                                    <p className="text-neutral-400 text-sm">Please <Link href="/login" className="text-accent hover:underline">login</Link> to leave a comment</p>
+                                </div>
                             )}
 
-                            {/* Comments list */}
-                            <div className="space-y-4">
+                            <div className="space-y-6">
                                 {comments.length === 0 ? (
-                                    <p className="text-neutral-400 text-center py-8">No comments yet</p>
+                                    <p className="text-neutral-500 text-center py-10 italic">No comments yet. Be the first!</p>
                                 ) : (
                                     comments.map((comment) => (
-                                        <div key={comment.id} className="border-b border-neutral-700 pb-4 last:border-0">
-                                            <div className="flex items-start gap-3">
-                                                <Image
-                                                    src={comment.author.profile?.avatar || "/img/nacho.png"}
-                                                    alt={comment.author.username}
-                                                    width={32}
-                                                    height={32}
-                                                    className="rounded-full"
-                                                />
-                                                <div className="flex-1">
-                                                    <div className="flex items-center gap-2 mb-1">
-                                                        <span className="font-semibold text-white">
-                                                            {comment.author.username}
-                                                        </span>
-                                                        <span className="text-xs text-neutral-400">
-                                                            {formatDate(comment.created_at)}
-                                                        </span>
-                                                    </div>
-                                                    <p className="text-neutral-300 break-words">{comment.text}</p>
+                                        <div key={comment.id} className="flex gap-4 group">
+                                            <Image
+                                                src={comment.author.profile?.avatar || "/img/nacho.png"}
+                                                alt={comment.author.username}
+                                                width={40} height={40}
+                                                className="rounded-full flex-shrink-0 h-10 w-10 border border-neutral-700"
+                                            />
+                                            <div className="flex-1 bg-neutral-800/30 p-4 rounded-2xl border border-neutral-700/30">
+                                                <div className="flex items-center justify-between mb-2">
+                                                    <span className="font-bold text-white text-sm">@{comment.author.username}</span>
+                                                    <span className="text-[10px] text-neutral-500 uppercase">{formatDate(comment.created_at)}</span>
                                                 </div>
+                                                <p className="text-neutral-300 text-sm leading-relaxed break-words">{comment.text}</p>
                                             </div>
                                         </div>
                                     ))
@@ -467,4 +330,3 @@ export default function ModelDetailPage() {
         </main>
     );
 }
-

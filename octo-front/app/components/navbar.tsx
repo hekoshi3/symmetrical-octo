@@ -4,6 +4,8 @@ import Image from "next/image";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useAuth } from "../provider/authProvider";
+import { NotificationBell } from "./notif";
+import { NavbarSearch } from "./NavSearch";
 
 export default function Navbar() {
   const { token, logout, isLoading } = useAuth();
@@ -24,7 +26,7 @@ export default function Navbar() {
           </Link>
         </section>
 
-        {/* Middle Section */}
+        {/* Middle Section 
         <section className="flex justify-center">
           <form className="max-w-md mx-auto">
             <label className="block mb-2.5 text-sm font-medium text-heading sr-only">Поиск</label>
@@ -36,18 +38,24 @@ export default function Navbar() {
               <button type="button" className="absolute end-1.5 bottom-1.5 text-white bg-brand bg-neutral-900 focus:ring-brand-medium shadow-xs font-medium leading-5 rounded text-xs px-3 py-1.5 focus:outline-none cursor-pointer">Искать</button>
             </div>
           </form>
-        </section>
+        </section>*/}
+        <NavbarSearch></NavbarSearch>
 
         {/* Right Section */}
         <section className="flex space-x-6 items-center">
-          <Link href="/" className="hover:underline">
-            Generate
-          </Link>
           {token && (
             <>
-              <Link href="/upload" className="hover:underline">
-                Upload
+              <Link href="/" className="hover:underline">
+                Generate
               </Link>
+              <details className="dropdown">
+                <summary className="m-1 bg-transparent">Загрузить</summary>
+                <ul className="menu dropdown-content bg-neutral-950 rounded-box z-1 mt-4 w-52 p-2 shadow-sm">
+                  <li><Link href={"/upload/image"}>Изображение</Link></li>
+                  <li><Link href={"/upload/model"}>Модель</Link></li>
+                </ul>
+              </details>
+              <NotificationBell></NotificationBell>
               <Link href="/user" className="hover:underline">
                 User
               </Link>

@@ -64,3 +64,66 @@ GET /images/?feed=following — Только подписки.
 CORS: Открыт для всех (*), проблем с локалкой быть не должно.
 
 Ошибки: Если что-то не так, бэк возвращает понятный JSON, например: {"file": ["Такой файл уже есть"]}.
+
+
+ответ после загрузки картинки 
+
+{
+    "id": 9,
+    "author": {
+        "id": 4,
+        "username": "notadmin",
+        "profile": {
+            "username": "notadmin",
+            "bio": "",
+            "avatar": null,
+            "banner": null
+        },
+        "followers_count": 0,
+        "is_following": false
+    },
+    "is_liked": false,
+    "image": "http://10.30.119.74:8001/media/images/user_4/00003-3828959467.png",
+    "generation_params": {
+        "raw": "1girl, bangs, closed mouth, hair ornament, hood, hood down, jacket, long hair, looking at viewer, multicolored hair, purple eyes, purple hair, solo, streaked hair, upper body, room, indoors, (dark:0.6), night, \nNegative prompt: (badhandv4:1.2), (easynegative:1.2)\nSteps: 35, Sampler: DPM++ 2M, Schedule type: Karras, CFG scale: 7, Seed: 3828959467, Size: 768x512, Model hash: 876b4c7ba5, Model: cetusMix_Whalefall2, VAE hash: f921fb3f29, VAE: kl-f8-anime2.ckpt, Denoising strength: 0.35, ControlNet 0: \"Module: canny, Model: control_v11p_sd15_lineart [43d4be0d], Weight: 1.0, Resize Mode: Crop and Resize, Processor Res: 1024, Threshold A: 1.0, Threshold B: 255.0, Guidance Start: 0.0, Guidance End: 1.0, Pixel Perfect: False, Control Mode: ControlNet is more important\", ControlNet 1: \"Module: normal_bae, Model: control_sd15_normal [fef5e48e], Weight: 1.0, Resize Mode: Crop and Resize, Processor Res: 1024, Threshold A: 0.5, Threshold B: 0.5, Guidance Start: 0.0, Guidance End: 1.0, Pixel Perfect: False, Control Mode: Balanced\", ControlNet 2: \"Module: depth_midas, Model: control_sd15_depth [fef5e48e], Weight: 1.5, Resize Mode: Crop and Resize, Processor Res: 1024, Threshold A: 0.5, Threshold B: 0.5, Guidance Start: 0.0, Guidance End: 1.0, Pixel Perfect: False, Control Mode: Balanced\", Hires upscale: 2.5, Hires steps: 25, Hires upscaler: R-ESRGAN 4x+ Anime6B, TI hashes: \"badhandv4: 5e40d722fc3d, easynegative: c74b4e810b03\", Downcast alphas_cumprod: True, Version: v1.9.4",
+        "prompt": "1girl, bangs, closed mouth, hair ornament, hood, hood down, jacket, long hair, looking at viewer, multicolored hair, purple eyes, purple hair, solo, streaked hair, upper body, room, indoors, (dark:0.6), night,",
+        "negative_prompt": "(badhandv4:1.2), (easynegative:1.2)",
+        "steps": "35",
+        "sampler": "DPM++ 2M",
+        "schedule_type": "Karras",
+        "cfg_scale": "7",
+        "seed": "3828959467",
+        "size": "768x512",
+        "model_hash": "876b4c7ba5",
+        "model": "control_sd15_depth [fef5e48e]",
+        "vae_hash": "f921fb3f29",
+        "vae": "kl-f8-anime2.ckpt",
+        "denoising_strength": "0.35",
+        "controlnet_0": "\"Module: canny",
+        "weight": "1.5",
+        "resize_mode": "Crop and Resize",
+        "processor_res": "1024",
+        "threshold_a": "0.5",
+        "threshold_b": "0.5",
+        "guidance_start": "0.0",
+        "guidance_end": "1.0",
+        "pixel_perfect": "False",
+        "control_mode": "Balanced\"",
+        "controlnet_1": "\"Module: normal_bae",
+        "controlnet_2": "\"Module: depth_midas",
+        "hires_upscale": "2.5",
+        "hires_steps": "25",
+        "hires_upscaler": "R-ESRGAN 4x+ Anime6B",
+        "ti_hashes": "\"badhandv4: 5e40d722fc3d",
+        "easynegative": "c74b4e810b03\"",
+        "downcast_alphas_cumprod": "True",
+        "version": "v1.9.4",
+        "width": 1920,
+        "height": 1280
+    },
+    "is_published": false,
+    "likes_count": 0,
+    "created_at": "2025-12-19T09:00:10.495737Z",
+    "linked_model": null,
+    "resources": []
+}

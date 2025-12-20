@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 "use client";
 
 import { useState } from "react";
@@ -25,8 +26,8 @@ export default function AuthPage() {
       if (meResponse.ok) {
         const userData = await meResponse.json();
         // Check if ID is directly in the response
-        if (userData.id) {
-          return userData.id;
+        if (userData.username) {
+          return userData.username;
         }
         
         // If no ID, try to get it from user's images

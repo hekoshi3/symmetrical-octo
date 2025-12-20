@@ -10,6 +10,11 @@ export interface GalleryImage {
   author: Author;
   is_liked: boolean;
   image: string;
+  path: string;
+  height: number;
+  width: number;
+  tags: string[];
+  description: string;
   generation_params: GenParams;
   is_published: boolean;
   likes_count: number;
@@ -26,6 +31,7 @@ export interface BackdendResMODEL {
 }
 
 export interface ModelList {
+  tags: string[];
   id: number;
   author: Author;
   is_liked: boolean;
@@ -39,7 +45,7 @@ export interface ModelList {
   is_published: boolean;
   created_at: Date;
   featured_image: number;
-  featured_image_url: string,
+  featured_image_url: string;
 }
 
 export interface Author {
@@ -55,15 +61,35 @@ export interface Author {
 }
 
 export interface UserProfile {
-  username: string,
-  avatar: string | null,
+  username: string;
+  avatar: string | null;
   stats: {
-    total_downloads: number,
-    total_likes: number,
-    followers: number,
-    models_count: number,
-    images_count: number
-  }
+    total_downloads: number;
+    total_likes: number;
+    followers: number;
+    models_count: number;
+    images_count: number;
+  };
+}
+
+export interface UserProfileData {
+  id: number;
+  username: string;
+  email: string;
+  first_name: string;
+  last_name: string;
+  bio: string;
+  avatar: string;
+  banner: string;
+  stats: {
+    total_downloads: number;
+    total_likes: number;
+    followers: number;
+    models_count: number;
+    images_count: number;
+  };
+  followers_count: number;
+  is_following: boolean;
 }
 
 export interface GenParams {
@@ -103,4 +129,47 @@ export interface CommentList {
   next: string | null;
   previous: string | null;
   results: Comment[];
+}
+
+export interface Notification {
+  id: number;
+  actor: Author;
+  type: "LIKE" | "COMMENT" | "FOLLOW" | "NEW_POST";
+  is_read: boolean;
+  created_at: string;
+  recipient: number;
+  image: number | null;
+  aimodel: number | null;
+  comment: number | null;
+}
+
+export interface NotificationList {
+  count: number;
+  next: string | null;
+  previous: string | null;
+  results: Notification[];
+}
+
+export interface Analytics {
+  top_models: [
+    {
+      id: number;
+      name: string;
+      downloads_count: number;
+      likes_count: number;
+    }
+  ];
+  top_images: [
+    {
+      id: number;
+      likes_count: number;
+      created_at: Date;
+    }
+  ];
+  activity_graph: [
+    {
+      date: string;
+      count: number;
+    }
+  ];
 }

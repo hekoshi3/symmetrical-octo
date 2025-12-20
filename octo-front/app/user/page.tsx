@@ -1,19 +1,13 @@
 "use client";
 
-import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { useAuth } from "../provider/authProvider";
+import { GalleryImage } from "../components/interfaces/BackdendRes";
 
 const API_HOST = process.env.NEXT_PUBLIC_BACKEND_API || "http://localhost:8000/api";
 
 export default function PushToUser() {
-    const [isLogin, setIsLogin] = useState(true);
-    const [username, setUsername] = useState("");
-    const [email, setEmail] = useState("");
-    const [password, setPassword] = useState("");
-    const [error, setError] = useState("");
-    const [isLoading, setIsLoading] = useState(false);
-    const { login, register, makeAuthenticatedRequest } = useAuth();
+    const { makeAuthenticatedRequest } = useAuth();
     const router = useRouter();
 
     const fetchUserId = async (): Promise<number | null> => {
@@ -25,8 +19,8 @@ export default function PushToUser() {
             if (meResponse.ok) {
                 const userData = await meResponse.json();
                 // Check if ID is directly in the response
-                if (userData.id) {
-                    router.push(`/user/${userData.id}`);
+                if (userData.username) {
+                    router.push(`/user/${userData.username}`);
                 }
 
                 // If no ID, try to get it from user's images
@@ -35,10 +29,10 @@ export default function PushToUser() {
                     const imagesData = await imagesResponse.json();
                     // Find an image by the current user
                     const userImage = imagesData.results?.find(
-                        (img: any) => img.author?.username === userData.username
+                        (img: GalleryImage) => img.author?.username === userData.username
                     );
-                    if (userImage?.author?.id) {
-                        router.push(`/user/${userImage.author.id}`);
+                    if (userImage?.author?.username) {
+                        router.push(`/user/${userImage.author.username}`);
                     }
                 }
             }

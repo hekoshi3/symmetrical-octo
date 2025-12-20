@@ -17,161 +17,160 @@ export const ModelCard = ({ model, index = 0 }: ModelCardProps) => {
     const auth = useAuth();
     const makeAuthenticatedRequest = auth.makeAuthenticatedRequest as (url: string, options?: RequestInit) => Promise<Response>;
     
-    // Track the model ID to detect when it changes
     const modelIdRef = useRef<number>(model.id);
-    // Track pending like state to prevent double-clicks
     const pendingLikeRef = useRef<boolean | null>(null);
     
-    // Track optimistic updates separately from prop values
     const [optimisticLiked, setOptimisticLiked] = useState<boolean | null>(null);
     const [optimisticCount, setOptimisticCount] = useState<number | null>(null);
     const [isUpdating, setIsUpdating] = useState<boolean>(false);
 
-    // Reset optimistic state when model changes
     useEffect(() => {
         const isNewModel = modelIdRef.current !== model.id;
-        
         if (isNewModel) {
             modelIdRef.current = model.id;
             pendingLikeRef.current = null;
             setOptimisticLiked(null);
             setOptimisticCount(null);
-            return;
         }
     }, [model.id]);
 
-    // Clear optimistic updates when props catch up
     useEffect(() => {
         if (auth.isLoading || !auth.token) return;
-        
-        // If we have optimistic updates, check if props have caught up
-        setOptimisticLiked(prev => {
-            if (prev !== null && model.is_liked === prev) {
-                return null; // Prop caught up, clear optimistic
-            }
-            return prev;
-        });
-        
-        setOptimisticCount(prev => {
-            if (prev !== null && model.likes_count === prev) {
-                return null; // Prop caught up, clear optimistic
-            }
-            return prev;
-        });
+        setOptimisticLiked(prev => (prev !== null && model.is_liked === prev) ? null : prev);
+        setOptimisticCount(prev => (prev !== null && model.likes_count === prev) ? null : prev);
     }, [model.is_liked, model.likes_count, auth.isLoading, auth.token]);
 
-    // Determine the actual liked state to display
-    // Use optimistic update if available, otherwise use prop value
-    const displayLiked = (() => {
-        // If we have a pending optimistic update, use it
-        if (pendingLikeRef.current !== null) {
-            return pendingLikeRef.current;
-        }
-        if (optimisticLiked !== null) {
-            return optimisticLiked;
-        }
-        // Otherwise use prop value (respecting auth status)
-        if (!auth.token || auth.isLoading) {
-            return false;
-        }
-        return model.is_liked ?? false;
-    })();
-
-    const displayCount = (() => {
-        if (optimisticCount !== null) {
-            return optimisticCount;
-        }
-        return model.likes_count ?? 0;
-    })();
+    // eslint-disable-next-line react-hooks/refs
+    const displayLiked = pendingLikeRef.current !== null ? pendingLikeRef.current : (optimisticLiked !== null ? optimisticLiked : (model.is_liked ?? false));
+    const displayCount = optimisticCount !== null ? optimisticCount : (model.likes_count ?? 0);
 
     const handleLikeClick = async (e: React.MouseEvent) => {
         e.preventDefault();
         e.stopPropagation();
-        
-        // Prevent clicks if not authenticated, already updating, or button disabled
         if (!auth.token || isUpdating || auth.isLoading) return;
 
-        // Get current display state
-        const currentLiked = displayLiked;
         const currentCount = displayCount;
-        const nextLiked = !currentLiked;
+        const nextLiked = !displayLiked;
         
-        // Set pending state to prevent interference
         pendingLikeRef.current = nextLiked;
         setIsUpdating(true);
-        
-        // Optimistic update
         setOptimisticLiked(nextLiked);
         setOptimisticCount(nextLiked ? currentCount + 1 : Math.max(currentCount - 1, 0));
 
-        // Fire and forget - don't await, suppress all errors including 400
         makeAuthenticatedRequest(`${API_HOST}/likes/`, {
             method: "POST",
-            headers: {
-                "Content-Type": "application/json",
-            },
+            headers: { "Content-Type": "application/json" },
             body: JSON.stringify({ image: null, aimodel: model.id }),
-        }).then((response) => {
-            // Silently handle all responses - 400 is expected when unliking
-            // Don't throw errors or log anything
-            if (!response.ok) {
-                // 400 and other errors are expected for toggle operations
-                // Silently consume the response body to prevent console errors
-                response.text().catch(() => {});
-            }
-            // Success or error - optimistic update will persist until props update
-        }).catch(() => {
-            // Silently ignore all errors (network errors, etc.)
-            // Keep the optimistic update regardless
         }).finally(() => {
-            // Clear pending and re-enable button after a short delay
             setTimeout(() => {
                 pendingLikeRef.current = null;
                 setIsUpdating(false);
-                // Don't clear optimistic updates here - let them persist until props update
-                // The useEffect will clear them when props match
             }, 200);
         });
     };
 
+    const isAuthor = auth.user && auth.user.username === model.author.username;
+
     return (
-        <div key={index} className="relative grid bg-neutral-primary-soft min-w-70 md:max-w-80 rounded-lg hover:scale-101">
-            <Link href={`/model/${model.id}`} className="place-items-center">
+        <div key={index} className="relative group bg-neutral-800 rounded-xl overflow-hidden shadow-lg transition-all hover:shadow-2xl hover:scale-[1.01]">
+            
+            {/* Изображение модели */}
+            <Link href={`/model/${model.id}`} className="block relative w-full aspect-[2/3]">
                 <Image
-                    src={model.featured_image_url ? model.featured_image_url : "/image404.png"}
-                    alt={`Model ${index}`}
-                    width={512}
-                    loading="eager"
-                    height={Math.round(512 * 1024 / 1024)}
-                    className="object-cover object-center rounded-lg md:max-h-100 lg:min-h-100"
+                    src={model.featured_image_url || "/image404.png"}
+                    alt={model.name || "Model"}
+                    fill
+                    sizes="(max-width: 768px) 100vw, 33vw"
+                    className="object-cover transition-transform duration-500 group-hover:scale-105"
+                    priority={index < 4}
                 />
-                <div className="absolute rounded-b-md inset-0 bg-linear-to-b to-neutral-950 z-0" />
+                <div className="absolute inset-0 bg-gradient-to-t from-black/95 via-transparent to-black/40 opacity-80 group-hover:opacity-100 transition-opacity" />
             </Link>
-            <div className="flex flex-col absolute bottom-0 max-h-100 max-w-11/12 text-balance z-1 mb-4">
-                <div className="pl-5 mb-5">
-                    <Link href={`/model/${model.id}`} className="">
-                        <div className="flex text-left gap-1">
-                            <Image src={"/img/nacho.png"} alt="" width={32} height={32} className="rounded-full"></Image>
-                            <h5 className="text-xl truncate self-end">{model.author.username}</h5>
+
+            {/* ВЕРХНЯЯ ЧАСТЬ: Статус и Кнопки */}
+            <div className="absolute top-0 left-0 right-0 p-3 flex justify-between items-start z-20">
+                <div>
+                    {!model.is_published && isAuthor && (
+                        <div className="bg-yellow-500 text-black text-[10px] font-bold px-2 py-1 rounded shadow-md uppercase">
+                            Draft
                         </div>
-                        <h4 className="text-2xl font-semibold tracking-tight text-heading truncate">{model.name ? model.name : "N/A"}</h4>
-                    </Link>
+                    )}
+                    {/* Бейдж типа модели (LoRA, Checkpoint и т.д.) */}
+                    {model.model_type && (
+                        <div className="mt-1 bg-accent/90 text-black text-[9px] font-black px-1.5 py-0.5 rounded uppercase">
+                            {model.model_type}
+                        </div>
+                    )}
                 </div>
-                <div className="pl-10 lg:pl-5 h-10 scale-150 lg:scale-100">
+
+                <div className="flex gap-2">
+                    {/* Edit только для владельца */}
+                    {isAuthor && (
+                        <Link 
+                            href={`/model/edit/${model.id}`}
+                            className="bg-black/40 hover:bg-accent hover:text-black p-2 rounded-lg backdrop-blur-md transition-all text-white"
+                        >
+                            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                            </svg>
+                        </Link>
+                    )}
+
+                    {/* Доп. инфо */}
+                    <div className="dropdown dropdown-end">
+                        <div tabIndex={0} role="button" className="bg-black/40 hover:bg-black/60 cursor-pointer rounded-lg p-2 backdrop-blur-md transition-all">
+                            <Image src="/menu-white.svg" alt="Info" width={18} height={18} />
+                        </div>
+                        <ul tabIndex={0} className="dropdown-content menu bg-neutral-900 border border-neutral-700 rounded-xl z-[30] p-3 mt-2 shadow-2xl w-60 text-[11px]">
+                            <li className="menu-title text-neutral-500 text-[10px] uppercase mb-1">Model Details</li>
+                            <li className="text-neutral-300 mb-1"><span>Type: <b className="text-accent">{model.model_type || "N/A"}</b></span></li>
+                            <li className="text-neutral-300 mb-1"><span>Downloads: <b>{model.downloads_count || 0}</b></span></li>
+                            <li className="text-neutral-300 mb-1"><span>Hash: <span className="font-mono opacity-60 text-[9px]">{model.file_hash?.substring(0,10) || "N/A"}...</span></span></li>
+                        </ul>
+                    </div>
+                </div>
+            </div>
+
+            {/* НИЖНЯЯ ЧАСТЬ: Название и Автор */}
+            <div className="absolute bottom-0 left-0 right-0 p-4 z-20">
+                <div className="mb-3">
+                    <h4 className="text-lg font-bold text-white truncate leading-tight group-hover:text-accent transition-colors">
+                        {model.name || "Untitled Model"}
+                    </h4>
+                </div>
+                
+                <div className="flex items-center justify-between">
+                    <Link href={`/user/${model.author.username}`} className="flex items-center gap-2 group/author max-w-[65%]">
+                        <div className="relative w-7 h-7 flex-shrink-0">
+                            <Image 
+                                src={model.author.profile?.avatar || "/img/nacho.png"} 
+                                alt={model.author.username} 
+                                fill
+                                className="rounded-full border border-white/20 object-cover"
+                            />
+                        </div>
+                        <span className="text-xs font-medium text-neutral-200 truncate group-hover/author:text-white">
+                            {model.author.username}
+                        </span>
+                    </Link>
+
                     <button
-                        className="flex items-center bg-white/20 cursor-pointer rounded-sm mr-2 px-2 disabled:opacity-50 disabled:cursor-not-allowed"
+                        className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full backdrop-blur-md transition-all ${
+                            displayLiked 
+                            ? 'bg-accent text-black font-bold' 
+                            : 'bg-white/10 text-white hover:bg-white/20'
+                        }`}
                         onClick={handleLikeClick}
                         disabled={isUpdating || auth.isLoading || !auth.token}
-                        type="button"
                     >
                         <Image
-                            className="m-2"
                             src={displayLiked ? "/heart-full-white.svg" : "/heart-white.svg"}
-                            alt={displayLiked ? "Liked" : "Not liked"}
-                            width={16}
-                            height={16}
+                            alt="Like"
+                            width={13}
+                            height={13}
+                            className={displayLiked ? "invert" : ""}
                         />
-                        <span className="text-sm pr-2">{displayCount}</span>
+                        <span className="text-xs">{displayCount}</span>
                     </button>
                 </div>
             </div>
