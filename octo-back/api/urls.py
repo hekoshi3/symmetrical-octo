@@ -1,6 +1,6 @@
 from django.urls import path, include
 from rest_framework.routers import DefaultRouter
-from .views import AiModelViewSet, GeneratedImageViewSet, CommentViewSet, LikeViewSet, UserViewSet, RegisterView, UserFollowViewSet, NotificationViewSet
+from .views import AiModelViewSet, GeneratedImageViewSet, CommentViewSet, LikeViewSet, UserViewSet, RegisterView, UserFollowViewSet, NotificationViewSet, TagViewSet, ModelTypesView
 from rest_framework_simplejwt.views import (
     TokenObtainPairView,
     TokenRefreshView,
@@ -14,6 +14,8 @@ router.register(r'likes', LikeViewSet)
 router.register(r'users', UserViewSet)
 router.register(r'follows', UserFollowViewSet)
 router.register(r'notifications', NotificationViewSet, basename='notification')
+router.register(r'tags', TagViewSet, basename='tags')
+
 
 
 urlpatterns = [
@@ -25,5 +27,6 @@ urlpatterns = [
     # Обновить токен (когда Access протух)
     path('token/refresh/', TokenRefreshView.as_view(), name='token_refresh'),
     path('register/', RegisterView.as_view(), name='auth_register'),
+    path('config/model-types/', ModelTypesView.as_view(), name='model-types'),  
 
 ]

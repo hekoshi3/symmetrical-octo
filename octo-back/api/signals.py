@@ -2,6 +2,7 @@ from django.db.models.signals import post_save, post_delete
 from django.dispatch import receiver
 from django.contrib.auth.models import User
 from .models import UserProfile, AiModel, GeneratedImage, Notification, Like, Comment, UserFollow
+import re
 
 @receiver(post_save, sender=User)
 def create_profile(sender, instance, created, **kwargs):
@@ -59,6 +60,48 @@ def notify_on_comment(sender, instance, created, **kwargs):
                 comment=instance
             )
 
+@receiver(post_save, sender=Comment)
+def notify_mentions(sender, instance, created, **kwargs):
+    """
+    Проверяет, упомянули ли кого-то через @username в тексте комментария.
+    Если да -> создает уведомление.
+    """
+    if created:
+        # 1. Ищем все упоминания вида @username
+        # Регулярка ищет @, за которым идут буквы/цифры/подчеркивания
+        mentioned_usernames = re.findall(r'@(\w+)', instance.text)
+        
+        if not mentioned_usernames:
+            return
+
+        # 2. Находим реальных юзеров в базе (убираем дубликаты через set)
+        users_to_notify = User.objects.filter(
+            username__in=list(set(mentioned_usernames))
+        )
+
+        # 3. Создаем уведомления
+        notifications = []
+        for user in users_to_notify:
+            # Не уведомляем, если человек тегнул сам себя
+            if user == instance.user:
+                continue
+            
+            # Не уведомляем автора поста второй раз (он и так получит уведомление "Новый комментарий")
+            # Хотя, если ты хочешь, чтобы он знал, что к нему обратились ЛИЧНО, можно это условие убрать.
+            # Для MVP оставим уведомление в любом случае, так надежнее.
+
+            notifications.append(Notification(
+                recipient=user,
+                actor=instance.user,
+                type='MENTION', # Можно добавить новый тип 'MENTION', но фронту проще обработать 'COMMENT'
+                image=instance.image,
+                aimodel=instance.aimodel,
+                comment=instance
+            ))
+        
+        # Записываем пачкой
+        Notification.objects.bulk_create(notifications)
+
 @receiver(post_save, sender=UserFollow)
 def notify_on_follow(sender, instance, created, **kwargs):
     """Кто-то подписался"""
@@ -75,29 +118,44 @@ def notify_followers_new_image(sender, instance, created, **kwargs):
     Автор выложил новый Арт -> Уведомляем подписчиков.
     Срабатывает только если is_published=True
     """
-    if instance.is_published:
+    if instance.is_published and not instance.notification_sent:
         # Ищем всех подписчиков автора
         followers = instance.author.followers.all()
         
         # Создаем уведомления (в цикле, для MVP сойдет)
         # Для продакшена тут используют Celery, чтобы не зависало при 1млн подписчиков
-        for follow_obj in followers:
-            Notification.objects.create(
+        notifications = [
+            Notification(
                 recipient=follow_obj.follower,
                 actor=instance.author,
                 type='NEW_POST',
                 image=instance
-            )
+            ) for follow_obj in followers
+        ]
+        
+        Notification.objects.bulk_create(notifications)
+
+        # Ставим флаг, что отправили. 
+        # Используем .update(), чтобы НЕ вызывать сигнал post_save повторно (избегаем рекурсии)
+        GeneratedImage.objects.filter(pk=instance.pk).update(notification_sent=True)
 
 @receiver(post_save, sender=AiModel)
 def notify_followers_new_model(sender, instance, created, **kwargs):
-    """Автор выложил новую Модель -> Уведомляем подписчиков"""
-    if instance.is_published:
+    """
+    Автор выложил новую Модель -> Уведомляем подписчиков.
+    """
+    if instance.is_published and not instance.notification_sent:
         followers = instance.author.followers.all()
-        for follow_obj in followers:
-            Notification.objects.create(
+        
+        notifications = [
+            Notification(
                 recipient=follow_obj.follower,
                 actor=instance.author,
                 type='NEW_POST',
                 aimodel=instance
-            )
+            ) for follow_obj in followers
+        ]
+        
+        Notification.objects.bulk_create(notifications)
+        
+        AiModel.objects.filter(pk=instance.pk).update(notification_sent=True)

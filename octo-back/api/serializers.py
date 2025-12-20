@@ -1,9 +1,12 @@
 import hashlib
+from django.db.models import F # <--- Не забудь импортировать
 from PIL import Image
 from rest_framework import serializers
 from django.contrib.auth.models import User
 from .models import AiModel, GeneratedImage, UserProfile, Comment, Like, UserFollow, Notification
 import re # Добавили регулярки
+from taggit.serializers import TagListSerializerField, TaggitSerializer
+from taggit.models import Tag
 
 # --- Вспомогательный сериализатор для Автора ---
 # Чтобы фронт получал не просто "author: 1", а "author: { username: 'max', avatar: '...' }"
@@ -12,7 +15,7 @@ class UserProfileSerializer(serializers.ModelSerializer):
     
     class Meta:
         model = UserProfile
-        fields = ['username', 'bio', 'avatar']
+        fields = ['username', 'bio', 'avatar', 'banner']
 
 class UserSerializer(serializers.ModelSerializer):
     profile = UserProfileSerializer(read_only=True)
@@ -35,20 +38,31 @@ class UserSerializer(serializers.ModelSerializer):
 
 
 # --- Сериализатор Моделей ---
-class AiModelSerializer(serializers.ModelSerializer):
+class AiModelSerializer(TaggitSerializer, serializers.ModelSerializer):
     author = UserSerializer(read_only=True)
+    tags = TagListSerializerField(required=False, child=serializers.CharField(allow_blank=True)) 
     is_liked = serializers.SerializerMethodField()
-
+    featured_image_url = serializers.SerializerMethodField()
     class Meta:
         model = AiModel
         fields = '__all__'
         read_only_fields = ['author', 'created_at', 'downloads_count', 'likes_count', 'file_hash']
+
+
 
     def get_is_liked(self, obj):
         request = self.context.get('request')
         if request and request.user.is_authenticated:
             return obj.likes.filter(user=request.user).exists()
         return False
+    
+    def get_featured_image_url(self, obj):
+        if obj.featured_image:
+            # Получаем полный URL (с http://localhost...)
+            request = self.context.get('request')
+            photo_url = obj.featured_image.image.url
+            return request.build_absolute_uri(photo_url) if request else photo_url
+        return None
 
     def validate_file(self, file):
         """
@@ -58,20 +72,33 @@ class AiModelSerializer(serializers.ModelSerializer):
         # Читаем первые байты (хедер)
         header = file.read(1024) 
         file.seek(0) # Возвращаем каретку в начало, иначе файл сохранится пустым!
-        
+        file_name = file.name.lower() 
         # Сигнатуры (примерные)
         # Safetensors - это JSON, начинается с {
         # CKPT (PyTorch) - это ZIP архив, начинается с PK (50 4B)
         
-        # Для MVP простая проверка: Safetensors должен начинаться с байта, указывающего на JSON
-        if file.name.endswith('.safetensors'):
-            # В спецификации safetensors первые 8 байт - это размер заголовка (int64), потом идет JSON '{'
-            # Но для простоты проверим, не является ли это очевидным текстом или картинкой
-            pass 
+        if file_name.endswith(('.ckpt', '.pt')):
+            if not header.startswith(b'PK'):
+                raise serializers.ValidationError("Файл поврежден или не является корректным .ckpt/.pt (ожидался ZIP-заголовок).")
+
+        # 2. Проверка для Safetensors
+        # Спецификация: первые 8 байт - это размер заголовка (uint64 little-endian).
+        # Это сложно валидировать идеально без парсера, но можно проверить, 
+        # что это НЕ текстовый файл и НЕ картинка.
+        if file_name.endswith('.safetensors'):
+            # Просто пример проверки: убедимся, что это не PNG/JPG
+            if header.startswith(b'\x89PNG') or header.startswith(b'\xff\xd8\xff'):
+                 raise serializers.ValidationError("Вы пытаетесь загрузить картинку под видом модели.")
         
         # Тут можно добавить сложную логику, но для MVP валидатора расширения в models.py обычно хватает.
         # Главное, что мы убедились, что файл читается.
         return file
+    
+    def validate_tags(self, value):
+        # value - это список, который пришел, например [''] или ['cat', '', 'girl']
+        # Мы оставляем только те теги, которые НЕ пустые
+        clean_tags = [tag for tag in value if tag.strip()]
+        return clean_tags
 
     def create(self, validated_data):
         request = self.context.get('request')
@@ -135,15 +162,16 @@ def parse_generation_data(raw_text):
 
     return data
 # --- Сериализатор Изображений ---
-class GeneratedImageSerializer(serializers.ModelSerializer):
+class GeneratedImageSerializer(TaggitSerializer, serializers.ModelSerializer):
     author = UserSerializer(read_only=True)
+    tags = TagListSerializerField(required=False, child=serializers.CharField(allow_blank=True)) 
     is_liked = serializers.SerializerMethodField()
 
     class Meta:
         model = GeneratedImage
         # is_published можно менять, поэтому он НЕ в read_only
         fields = '__all__'
-        read_only_fields = ['author', 'created_at', 'likes_count', 'generation_params']
+        read_only_fields = ['author', 'created_at', 'likes_count']
 
     def get_is_liked(self, obj):
         request = self.context.get('request')
@@ -183,6 +211,30 @@ class GeneratedImageSerializer(serializers.ModelSerializer):
 
         return super().create(validated_data)
 
+    def update(self, instance, validated_data):
+        # Смотрим, прислали ли новые параметры генерации
+        new_params = validated_data.get('generation_params')
+        
+        if new_params:
+            # Берем старые параметры (или пустой dict, если их не было)
+            current_params = instance.generation_params or {}
+            
+            # Обновляем старые параметры новыми (Python dict update)
+            # Это сохранит старые ключи и перезапишет/добавит новые
+            current_params.update(new_params)
+            
+            # Записываем объединенный результат обратно в данные для сохранения
+            validated_data['generation_params'] = current_params
+
+        # Вызываем стандартное обновление для остальных полей (description и т.д.)
+        return super().update(instance, validated_data)
+    
+    def validate_tags(self, value):
+        # value - это список, который пришел, например [''] или ['cat', '', 'girl']
+        # Мы оставляем только те теги, которые НЕ пустые
+        clean_tags = [tag for tag in value if tag.strip()]
+        return clean_tags
+
 # --- Комментарии ---
 class CommentSerializer(serializers.ModelSerializer):
     author = UserSerializer(source='user', read_only=True)
@@ -215,22 +267,22 @@ class LikeSerializer(serializers.ModelSerializer):
             # Если лайк есть - удаляем его (дизлайк) и уменьшаем счетчик
             existing_like.delete()
             if image:
-                image.likes_count = max(0, image.likes_count - 1)
-                image.save()
+                image.likes_count = F('likes_count') - 1
+                image.save(update_fields=['likes_count'])
             if aimodel:
-                aimodel.likes_count = max(0, aimodel.likes_count - 1)
-                aimodel.save()
+                aimodel.likes_count = F('likes_count') - 1
+                aimodel.save(update_fields=['likes_count'])
             raise serializers.ValidationError("Like removed (Unliked)")
         
         # Если лайка нет - создаем и увеличиваем счетчик
         like = Like.objects.create(user=user, **validated_data)
         
         if image:
-            image.likes_count += 1
-            image.save()
+            image.likes_count = F('likes_count') + 1
+            image.save(update_fields=['likes_count'])
         if aimodel:
-            aimodel.likes_count += 1
-            aimodel.save()
+            aimodel.likes_count = F('likes_count') + 1
+            aimodel.save(update_fields=['likes_count'])
             
         return like
 
@@ -278,3 +330,46 @@ class NotificationSerializer(serializers.ModelSerializer):
     class Meta:
         model = Notification
         fields = '__all__'
+
+class UserUpdateSerializer(serializers.ModelSerializer):
+    """
+    Сериализатор для обновления профиля через PATCH /api/users/me/
+    """
+    # Поля из модели Profile (они вложенные, поэтому указываем source)
+    bio = serializers.CharField(source='profile.bio', required=False, allow_blank=True)
+    avatar = serializers.ImageField(source='profile.avatar', required=False, allow_null=True)
+    banner = serializers.ImageField(source='profile.banner', required=False, allow_null=True)
+    class Meta:
+        model = User
+        fields = ['first_name', 'last_name', 'email', 'bio', 'avatar', 'banner']
+    
+    def update(self, instance, validated_data):
+        # Достаём данные профиля отдельно (они вложенные)
+        profile_data = validated_data.pop('profile', {})
+        
+        # Обновляем поля User
+        instance.first_name = validated_data.get('first_name', instance.first_name)
+        instance.last_name = validated_data.get('last_name', instance.last_name)
+        instance.email = validated_data.get('email', instance.email)
+        instance.save()
+        
+        # Обновляем поля Profile
+        profile = instance.profile
+        if 'bio' in profile_data:
+            profile.bio = profile_data['bio']
+        if 'avatar' in profile_data:
+            profile.avatar = profile_data['avatar']
+        if 'banner' in profile_data:
+            profile.banner = profile_data['banner']
+        profile.save()
+        
+        return instance
+
+
+class TagSerializer(serializers.ModelSerializer):
+    # Добавляем поле count (количество использований), оно вычисляется в ViewSet
+    count = serializers.IntegerField(read_only=True) 
+
+    class Meta:
+        model = Tag
+        fields = ['name', 'slug', 'count']

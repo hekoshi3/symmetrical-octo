@@ -2,7 +2,7 @@ from django.db import models
 from django.contrib.auth.models import User
 from django.core.exceptions import ValidationError
 from django.core.validators import FileExtensionValidator
-
+from taggit.managers import TaggableManager
 
 def model_directory_path(instance, filename):
     # Файл будет загружен в MEDIA_ROOT/models/user_<id>/<filename>
@@ -16,6 +16,9 @@ def avatar_directory_path(instance, filename):
     # Аватарки: MEDIA_ROOT/users/avatars/user_<id>/<filename>
     return f'users/avatars/user_{instance.user.id}/{filename}'
 
+def banner_directory_path(instance, filename):
+    # Баннеры: MEDIA_ROOT/users/banners/user_<id>/<filename>
+    return f'users/banners/user_{instance.user.id}/{filename}'
 
 # --- ПРОФИЛЬ ---
 class UserProfile(models.Model):
@@ -23,6 +26,7 @@ class UserProfile(models.Model):
     user = models.OneToOneField(User, on_delete=models.CASCADE, related_name="profile")
     bio = models.TextField(max_length=500, blank=True)
     avatar = models.ImageField(upload_to=avatar_directory_path, blank=True, null=True)
+    banner = models.ImageField(upload_to=banner_directory_path, blank=True, null=True)
 
     def __str__(self):
         return self.user.username
@@ -41,6 +45,8 @@ class AiModel(models.Model):
     name = models.CharField(max_length=100)
     model_type = models.CharField(max_length=50, choices=AI_MODEL_TYPES)
     description = models.TextField(blank=True)
+    notification_sent = models.BooleanField(default=False)
+    tags = TaggableManager(blank=True) 
     
     # Файл модели + валидация (ТЗ 5.2)
     file = models.FileField(
@@ -72,7 +78,10 @@ class AiModel(models.Model):
 class GeneratedImage(models.Model):
     author = models.ForeignKey(User, on_delete=models.CASCADE, related_name="images")
     image = models.ImageField(upload_to=image_directory_path, max_length=500)
-    
+    description = models.TextField(blank=True)
+    notification_sent = models.BooleanField(default=False)
+    tags = TaggableManager(blank=True) 
+
     # Ссылка на модель (если это пример работы конкретной модели)
     linked_model = models.ForeignKey(
         AiModel, 
@@ -165,6 +174,7 @@ class Notification(models.Model):
         ('COMMENT', 'Новый комментарий'),
         ('FOLLOW', 'Новый подписчик'),
         ('NEW_POST', 'Новый пост от подписки'),
+        ('MENTION', 'Вас отметили в комментарии')
     ]
 
     recipient = models.ForeignKey(User, on_delete=models.CASCADE, related_name="notifications") # Кому пришло
