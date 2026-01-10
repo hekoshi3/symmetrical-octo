@@ -16,10 +16,10 @@ interface ImgCardProps {
 export const ImgCard = ({ img, index = 0 }: ImgCardProps) => {
     const auth = useAuth();
     const makeAuthenticatedRequest = auth.makeAuthenticatedRequest as (url: string, options?: RequestInit) => Promise<Response>;
-    
+
     const imageIdRef = useRef<number>(img.id);
     const pendingLikeRef = useRef<boolean | null>(null);
-    
+
     const [optimisticLiked, setOptimisticLiked] = useState<boolean | null>(null);
     const [optimisticCount, setOptimisticCount] = useState<number | null>(null);
     const [isUpdating, setIsUpdating] = useState<boolean>(false);
@@ -51,7 +51,7 @@ export const ImgCard = ({ img, index = 0 }: ImgCardProps) => {
 
         const currentCount = displayCount;
         const nextLiked = !displayLiked;
-        
+
         pendingLikeRef.current = nextLiked;
         setIsUpdating(true);
         setOptimisticLiked(nextLiked);
@@ -73,13 +73,14 @@ export const ImgCard = ({ img, index = 0 }: ImgCardProps) => {
 
     return (
         <div key={index} className="relative group bg-neutral-800 rounded-xl overflow-hidden shadow-lg transition-all hover:shadow-2xl hover:scale-[1.01]">
-            
+
             {/* Изображение и ссылка */}
             <Link href={`/image/${img.id}`} className="block relative w-full aspect-[2/3]">
                 <Image
                     src={img.image}
                     alt={`Image ${img.id}`}
-                    fill
+                    width={768}
+                    height={1024}
                     sizes="(max-width: 768px) 100vw, (max-width: 1200px) 50vw, 33vw"
                     className="object-cover transition-transform duration-500 group-hover:scale-105"
                     priority={index < 4}
@@ -101,7 +102,7 @@ export const ImgCard = ({ img, index = 0 }: ImgCardProps) => {
                 <div className="flex gap-2">
                     {/* Кнопка редактирования */}
                     {isAuthor && (
-                        <Link 
+                        <Link
                             href={`/image/edit/${img.id}`}
                             className="bg-black/40 hover:bg-accent hover:text-black p-2 rounded-lg backdrop-blur-md transition-all text-white"
                             title="Edit"
@@ -133,9 +134,9 @@ export const ImgCard = ({ img, index = 0 }: ImgCardProps) => {
                 <div className="flex items-center justify-between">
                     <Link href={`/user/${img.author.username}`} className="flex items-center gap-2 group/author max-w-[65%]">
                         <div className="relative w-8 h-8 flex-shrink-0">
-                            <Image 
-                                src={img.author.profile?.avatar || "/img/nacho.png"} 
-                                alt={img.author.username} 
+                            <Image
+                                src={img.author.profile?.avatar || "/img/nacho.png"}
+                                alt={img.author.username}
                                 fill
                                 className="rounded-full border border-white/20 object-cover"
                             />
@@ -151,11 +152,10 @@ export const ImgCard = ({ img, index = 0 }: ImgCardProps) => {
                     </Link>
 
                     <button
-                        className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full backdrop-blur-md transition-all ${
-                            displayLiked 
-                            ? 'bg-accent text-black font-bold scale-105' 
-                            : 'bg-white/10 text-white hover:bg-white/20'
-                        }`}
+                        className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full backdrop-blur-md transition-all ${displayLiked
+                                ? 'bg-accent text-black font-bold scale-105'
+                                : 'bg-white/10 text-white hover:bg-white/20'
+                            }`}
                         onClick={handleLikeClick}
                         disabled={isUpdating || auth.isLoading || !auth.token}
                     >

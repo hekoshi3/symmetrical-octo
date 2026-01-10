@@ -3,14 +3,12 @@
 //html tag that depends on the language parameter
 const NotFound = () => {
     return (
-        <html lang="en">
-            <body>
+
                 <div className="flex flex-col gap-10">
                     <h1>Oops</h1>
                     <p>The requested page does not exist</p>
                 </div>
-            </body>
-        </html>
+
     );
 }
 

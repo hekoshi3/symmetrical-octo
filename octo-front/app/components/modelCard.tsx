@@ -79,7 +79,8 @@ export const ModelCard = ({ model, index = 0 }: ModelCardProps) => {
                 <Image
                     src={model.featured_image_url || "/image404.png"}
                     alt={model.name || "Model"}
-                    fill
+                    width={768}
+                    height={1024}
                     sizes="(max-width: 768px) 100vw, 33vw"
                     className="object-cover transition-transform duration-500 group-hover:scale-105"
                     priority={index < 4}
